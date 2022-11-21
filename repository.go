@@ -21,9 +21,9 @@ import (
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
 	ap "github.com/go-ap/fedbox/activitypub"
-	"github.com/go-ap/fedbox/internal/cache"
 	"github.com/go-ap/fedbox/storage"
 	"github.com/go-ap/processing"
+	"github.com/go-ap/storage-fs/internal/cache"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/ed25519"
 )

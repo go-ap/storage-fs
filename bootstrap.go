@@ -8,15 +8,16 @@ import (
 
 	vocab "github.com/go-ap/activitypub"
 	ap "github.com/go-ap/fedbox/activitypub"
-	"github.com/go-ap/fedbox/internal/cache"
-	"github.com/go-ap/fedbox/internal/config"
+	"github.com/go-ap/storage-fs/internal/cache"
 )
 
-func Clean(conf config.Options) error {
-	return os.RemoveAll(conf.BaseStoragePath())
+type Options struct{}
+
+func Clean(conf Options) error {
+	return os.RemoveAll(BaseStoragePath())
 }
 
-func Bootstrap(conf config.Options) error {
+func Bootstrap(conf Options) error {
 	r, err := New(Config{
 		StoragePath: path.Dir(conf.BaseStoragePath()),
 		BaseURL:     conf.BaseURL,
