@@ -1,5 +1,3 @@
-//go:build storage_fs || storage_all || (!storage_boltdb && !storage_badger && !storage_pgx && !storage_sqlite) || !go1.17
-
 package fs
 
 import (
@@ -45,14 +43,14 @@ type loggerFn func(string, ...interface{})
 var defaultLogFn = func(string, ...interface{}) {}
 
 type Config struct {
-	EnableCache bool
-	StoragePath string
-	BaseURL     string
+	CacheEnable bool
+	Path        string
+	URL         string
 }
 
 // New returns a new repo repository
 func New(c Config) (*repo, error) {
-	p, err := getAbsStoragePath(c.StoragePath)
+	p, err := getAbsStoragePath(c.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -66,10 +64,10 @@ func New(c Config) (*repo, error) {
 	b := repo{
 		path:    p,
 		cwd:     cwd,
-		baseURL: c.BaseURL,
+		baseURL: c.URL,
 		logFn:   defaultLogFn,
 		errFn:   defaultLogFn,
-		cache:   cache.New(c.EnableCache),
+		cache:   cache.New(c.CacheEnable),
 	}
 	return &b, nil
 }

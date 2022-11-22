@@ -1,28 +1,19 @@
-//go:build storage_fs || storage_all || (!storage_boltdb && !storage_badger && !storage_pgx && !storage_sqlite)
-
 package fs
 
 import (
 	"os"
-	"path"
 
 	vocab "github.com/go-ap/activitypub"
 	ap "github.com/go-ap/fedbox/activitypub"
 	"github.com/go-ap/storage-fs/internal/cache"
 )
 
-type Options struct{}
-
-func Clean(conf Options) error {
-	return os.RemoveAll(BaseStoragePath())
+func Clean(conf Config) error {
+	return os.RemoveAll(conf.Path)
 }
 
-func Bootstrap(conf Options) error {
-	r, err := New(Config{
-		StoragePath: path.Dir(conf.BaseStoragePath()),
-		BaseURL:     conf.BaseURL,
-		EnableCache: conf.StorageCache,
-	})
+func Bootstrap(conf Config) error {
+	r, err := New(conf)
 	if err != nil {
 		return err
 	}
@@ -31,7 +22,7 @@ func Bootstrap(conf Options) error {
 		return err
 	}
 	defer r.Close()
-	self := ap.Self(ap.DefaultServiceIRI(conf.BaseURL))
+	self := ap.Self(ap.DefaultServiceIRI(conf.URL))
 	actors := &vocab.OrderedCollection{ID: ap.ActorsType.IRI(self)}
 	if _, err = r.Create(actors); err != nil {
 		return err
