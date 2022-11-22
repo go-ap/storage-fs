@@ -43,9 +43,9 @@ type loggerFn func(string, ...interface{})
 var defaultLogFn = func(string, ...interface{}) {}
 
 type Config struct {
-	CacheEnable bool
 	Path        string
 	URL         string
+	CacheEnable bool
 }
 
 // New returns a new repo repository
