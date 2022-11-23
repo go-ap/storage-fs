@@ -12,7 +12,7 @@ func Clean(conf Config) error {
 	return os.RemoveAll(conf.Path)
 }
 
-func Bootstrap(conf Config) error {
+func Bootstrap(conf Config, url string) error {
 	r, err := New(conf)
 	if err != nil {
 		return err
@@ -22,7 +22,7 @@ func Bootstrap(conf Config) error {
 		return err
 	}
 	defer r.Close()
-	self := ap.Self(ap.DefaultServiceIRI(conf.URL))
+	self := ap.Self(ap.DefaultServiceIRI(url))
 	actors := &vocab.OrderedCollection{ID: ap.ActorsType.IRI(self)}
 	if _, err = r.Create(actors); err != nil {
 		return err

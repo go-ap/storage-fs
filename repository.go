@@ -44,7 +44,6 @@ var defaultLogFn = func(string, ...interface{}) {}
 
 type Config struct {
 	Path        string
-	URL         string
 	CacheEnable bool
 }
 
@@ -62,12 +61,11 @@ func New(c Config) (*repo, error) {
 		return nil, err
 	}
 	b := repo{
-		path:    p,
-		cwd:     cwd,
-		baseURL: c.URL,
-		logFn:   defaultLogFn,
-		errFn:   defaultLogFn,
-		cache:   cache.New(c.CacheEnable),
+		path:  p,
+		cwd:   cwd,
+		logFn: defaultLogFn,
+		errFn: defaultLogFn,
+		cache: cache.New(c.CacheEnable),
 	}
 	return &b, nil
 }
@@ -121,9 +119,6 @@ func (r *repo) Load(i vocab.IRI) (vocab.Item, error) {
 		return nil, err
 	}
 	defer r.Close()
-	if !r.IsLocalIRI(vocab.IRI(r.baseURL)) {
-		return nil, errors.Newf("unable to load non-local IRI: %s", i)
-	}
 
 	f, err := ap.FiltersFromIRI(i)
 	if err != nil {
@@ -668,11 +663,6 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	return it, nil
 }
 
-// IsLocalIRI shows if the received IRI belongs to the current instance
-func (r repo) IsLocalIRI(i vocab.IRI) bool {
-	return i.Contains(vocab.IRI(r.baseURL), false)
-}
-
 func onCollection(r *repo, col vocab.IRI, it vocab.Item, fn func(p string) error) error {
 	if vocab.IsNil(it) {
 		return errors.Newf("Unable to operate on nil element")
@@ -682,9 +672,6 @@ func onCollection(r *repo, col vocab.IRI, it vocab.Item, fn func(p string) error
 	}
 	if len(it.GetLink()) == 0 {
 		return errors.Newf("Invalid collection, it does not have a valid IRI")
-	}
-	if !r.IsLocalIRI(col) {
-		return errors.Newf("Unable to save to non local collection %s", col)
 	}
 
 	itPath := r.itemPath(col)
