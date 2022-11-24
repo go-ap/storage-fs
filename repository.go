@@ -45,6 +45,8 @@ var defaultLogFn = func(string, ...interface{}) {}
 type Config struct {
 	Path        string
 	CacheEnable bool
+	LogFn loggerFn
+	ErrFn loggerFn
 }
 
 // New returns a new repo repository
@@ -88,12 +90,16 @@ func (r *repo) Open() error {
 	return os.Chdir(r.path)
 }
 
-// Close
-func (r *repo) Close() error {
+func (r *repo) close() error {
 	if r.opened {
 		return nil
 	}
 	return os.Chdir(r.cwd)
+}
+
+// Close
+func (r *repo) Close() {
+	r.close()
 }
 
 func (r *repo) CreateService(service vocab.Service) error {
@@ -581,23 +587,6 @@ func deleteCollections(r repo, it vocab.Item) error {
 			err = deleteCollectionFromPath(r, vocab.Shares.IRI(o))
 			return err
 		})
-	}
-	return nil
-}
-
-func mkDirIfNotExists(p string) error {
-	fi, err := os.Stat(p)
-	if err != nil && os.IsNotExist(err) {
-		err = os.MkdirAll(p, os.ModeDir|os.ModePerm|0700)
-	}
-	if err != nil {
-		return err
-	}
-	fi, err = os.Stat(p)
-	if err != nil {
-		return err
-	} else if !fi.IsDir() {
-		return errors.Errorf("path exists, and is not a folder %s", p)
 	}
 	return nil
 }
