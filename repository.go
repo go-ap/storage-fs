@@ -21,7 +21,6 @@ import (
 	"github.com/go-ap/errors"
 	ap "github.com/go-ap/fedbox/activitypub"
 	"github.com/go-ap/fedbox/storage"
-	"github.com/go-ap/processing"
 	"github.com/go-ap/storage-fs/internal/cache"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/ed25519"
@@ -52,6 +51,8 @@ type Config struct {
 	LogFn loggerFn
 	ErrFn loggerFn
 }
+
+type Filterable = vocab.LinkOrIRI
 
 // New returns a new repo repository
 func New(c Config) (*repo, error) {
@@ -690,7 +691,7 @@ func loadFromRaw(raw []byte) (vocab.Item, error) {
 	return decodeItemFn(raw)
 }
 
-func (r repo) loadOneFromPath(f processing.Filterable) (vocab.Item, error) {
+func (r repo) loadOneFromPath(f Filterable) (vocab.Item, error) {
 	col, err := r.loadFromPath(f)
 	if err != nil {
 		return nil, err
@@ -709,7 +710,7 @@ func (r repo) loadOneFromPath(f processing.Filterable) (vocab.Item, error) {
 	return col, nil
 }
 
-func isSingleItem(f processing.Filterable) bool {
+func isSingleItem(f Filterable) bool {
 	if _, isIRI := f.(vocab.IRI); isIRI {
 		return true
 	}
@@ -719,7 +720,7 @@ func isSingleItem(f processing.Filterable) bool {
 	return false
 }
 
-func loadFilteredPropsForActor(r repo, f processing.Filterable) func(a *vocab.Actor) error {
+func loadFilteredPropsForActor(r repo, f Filterable) func(a *vocab.Actor) error {
 	return func(a *vocab.Actor) error {
 		return vocab.OnObject(a, loadFilteredPropsForObject(r, f))
 	}
@@ -727,7 +728,7 @@ func loadFilteredPropsForActor(r repo, f processing.Filterable) func(a *vocab.Ac
 
 var subFilterValidationError = errors.NotValidf("subfilter failed validation")
 
-func loadFilteredPropsForObject(r repo, f processing.Filterable) func(o *vocab.Object) error {
+func loadFilteredPropsForObject(r repo, f Filterable) func(o *vocab.Object) error {
 	return func(o *vocab.Object) error {
 		if len(o.Tag) == 0 {
 			return nil
@@ -746,7 +747,7 @@ func loadFilteredPropsForObject(r repo, f processing.Filterable) func(o *vocab.O
 	}
 }
 
-func loadFilteredPropsForActivity(r repo, f processing.Filterable) func(a *vocab.Activity) error {
+func loadFilteredPropsForActivity(r repo, f Filterable) func(a *vocab.Activity) error {
 	return func(a *vocab.Activity) error {
 		if ok, fo := ap.FiltersOnActivityObject(f); ok && !vocab.IsNil(a.Object) && vocab.IsIRI(a.Object) {
 			if ob, err := r.loadOneFromPath(a.Object.GetLink()); err == nil {
@@ -760,7 +761,7 @@ func loadFilteredPropsForActivity(r repo, f processing.Filterable) func(a *vocab
 	}
 }
 
-func loadFilteredPropsForIntransitiveActivity(r repo, f processing.Filterable) func(a *vocab.IntransitiveActivity) error {
+func loadFilteredPropsForIntransitiveActivity(r repo, f Filterable) func(a *vocab.IntransitiveActivity) error {
 	return func(a *vocab.IntransitiveActivity) error {
 		if ok, fa := ap.FiltersOnActivityActor(f); ok && !vocab.IsNil(a.Actor) && vocab.IsIRI(a.Actor) {
 			if act, err := r.loadOneFromPath(a.Actor.GetLink()); err == nil {
@@ -822,7 +823,7 @@ func getOriginalIRI(p string) (vocab.Item, error) {
 	return vocab.IRI(u.String()), nil
 }
 
-func (r repo) loadItem(p string, f processing.Filterable) (vocab.Item, error) {
+func (r repo) loadItem(p string, f Filterable) (vocab.Item, error) {
 	var it vocab.Item
 	if cachedIt := r.cache.Get(f.GetLink()); cachedIt != nil {
 		it = cachedIt
@@ -886,7 +887,7 @@ func (r repo) loadItem(p string, f processing.Filterable) (vocab.Item, error) {
 	return it, nil
 }
 
-func (r repo) loadFromPath(f processing.Filterable) (vocab.ItemCollection, error) {
+func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
 	var err error
 	col := make(vocab.ItemCollection, 0)
 
