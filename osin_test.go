@@ -1,7 +1,6 @@
 package fs
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -34,7 +33,7 @@ func saveFsItem(it interface{}, basePath string) error {
 	defer f.Close()
 
 	var raw []byte
-	raw, err = json.Marshal(it)
+	raw, err = encodeFn(it)
 	if err != nil {
 		return err
 	}
@@ -223,7 +222,7 @@ func TestStor_CreateClient(t *testing.T) {
 				t.Errorf("Unable to read %s client raw data: %s", filePath, err)
 			}
 			l := new(osin.DefaultClient)
-			err = json.Unmarshal(raw, l)
+			err = decodeFn(raw, l)
 			if err != nil {
 				t.Errorf("Unable to unmarshal %s client raw data: %s", filePath, err)
 			}
@@ -262,7 +261,7 @@ func TestStor_UpdateClient(t *testing.T) {
 				t.Errorf("Unable to read %s client raw data: %s", filePath, err)
 			}
 			l := new(osin.DefaultClient)
-			err = json.Unmarshal(raw, l)
+			err = decodeFn(raw, l)
 			if err != nil {
 				t.Errorf("Unable to unmarshal %s client raw data: %s", filePath, err)
 			}
