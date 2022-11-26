@@ -3,7 +3,7 @@ module github.com/go-ap/storage-fs
 go 1.19
 
 require (
-	github.com/go-ap/activitypub v0.0.0-20221126061933-ea245cac6043
+	github.com/go-ap/activitypub v0.0.0-20221126085132-87fc226acd00
 	github.com/go-ap/errors v0.0.0-20221115052505-8aaa26f930b4
 	github.com/go-ap/fedbox v0.0.0-20221120045022-07cf64331c4c
 	github.com/openshift/osin v1.0.1
