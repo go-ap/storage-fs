@@ -1,13 +1,14 @@
 package fs
 
 import (
-	"encoding/json"
+	"encoding/gob"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
 	"time"
 
+	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
 	"github.com/openshift/osin"
 )
@@ -20,6 +21,10 @@ const (
 	refreshBucket   = "refresh"
 	folder          = "oauth"
 )
+
+func init() {
+	gob.Register(vocab.IRI(""))
+}
 
 type cl struct {
 	Id          string
@@ -160,10 +165,9 @@ func (r *repo) ListClients() ([]osin.Client, error) {
 	defer r.Close()
 	clients := make([]osin.Client, 0)
 
-	_, err = r.loadFromOauthPath(r.oauthPath( clientsBucket), func(raw []byte) error {
+	_, err = r.loadFromOauthPath(r.oauthPath(clientsBucket), func(raw []byte) error {
 		cl := cl{}
-		err := json.Unmarshal(raw, &cl)
-		if err != nil {
+		if err := decodeFn(raw, &cl); err != nil {
 			return err
 		}
 		d := osin.DefaultClient{
@@ -183,7 +187,7 @@ func (r *repo) loadClientFromPath(clientPath string) (osin.Client, error) {
 	c := new(osin.DefaultClient)
 	_, err := r.loadFromOauthPath(clientPath, func(raw []byte) error {
 		cl := cl{}
-		if err := json.Unmarshal(raw, &cl); err != nil {
+		if err := decodeFn(raw, &cl); err != nil {
 			return errors.Annotatef(err, "Unable to unmarshal client object")
 		}
 		c.Id = cl.Id
@@ -226,7 +230,7 @@ func createFolderIfNotExists(p string) error {
 }
 
 func putItem(basePath string, it interface{}) error {
-	raw, err := json.Marshal(it)
+	raw, err := encodeFn(it)
 	if err != nil {
 		return errors.Annotatef(err, "Unable to marshal %T", it)
 	}
@@ -321,7 +325,7 @@ func (r *repo) loadAuthorizeFromPath(authPath string) (*osin.AuthorizeData, erro
 	data := new(osin.AuthorizeData)
 	_, err := r.loadFromOauthPath(authPath, func(raw []byte) error {
 		auth := auth{}
-		if err := json.Unmarshal(raw, &auth); err != nil {
+		if err := decodeFn(raw, &auth); err != nil {
 			return errors.Annotatef(err, "Unable to unmarshal client object")
 		}
 		data.Code = auth.Code
@@ -433,7 +437,7 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 	result := new(osin.AccessData)
 	_, err := r.loadFromOauthPath(accessPath, func(raw []byte) error {
 		access := acc{}
-		if err := json.Unmarshal(raw, &access); err != nil {
+		if err := decodeFn(raw, &access); err != nil {
 			return errors.Annotatef(err, "Unable to unmarshal access object")
 		}
 		result.AccessToken = access.AccessToken
@@ -461,7 +465,7 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 		if access.Previous != "" {
 			_, err := r.loadFromOauthPath(accessPath, func(raw []byte) error {
 				access := acc{}
-				if err := json.Unmarshal(raw, &access); err != nil {
+				if err := decodeFn(raw, &access); err != nil {
 					return errors.Annotatef(err, "Unable to unmarshal access object")
 				}
 				prev := new(osin.AccessData)
@@ -525,5 +529,5 @@ func (r *repo) RemoveRefresh(code string) error {
 		return errors.Annotatef(err, "Unable to open fs *repositoryage")
 	}
 	defer r.Close()
-	return os.RemoveAll(r.oauthPath( refreshBucket, code))
+	return os.RemoveAll(r.oauthPath(refreshBucket, code))
 }

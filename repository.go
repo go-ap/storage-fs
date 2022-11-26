@@ -1,9 +1,10 @@
 package fs
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/gob"
 	"encoding/pem"
 	"fmt"
 	"io/fs"
@@ -26,14 +27,17 @@ import (
 	"golang.org/x/crypto/ed25519"
 )
 
-var encodeFn = vocab.MarshalJSON
-var decodeItemFn = vocab.UnmarshalJSON
+var encodeItemFn = vocab.GobEncode
+var decodeItemFn = vocab.GobDecode
 
-var encodeMetadataFn = json.Marshal
-var decodeMetadataFn = func(data []byte) (*storage.Metadata, error) {
-	m := new(storage.Metadata)
-	err := json.Unmarshal(data, m)
-	return m, err
+var encodeFn = func (v any) ([]byte, error) {
+	buf := bytes.Buffer{}
+	err := gob.NewEncoder(&buf).Encode(v)
+	return buf.Bytes(), err
+}
+
+var decodeFn = func(data []byte, m any) error {
+	return gob.NewDecoder(bytes.NewReader(data)).Decode(m)
 }
 
 var errNotImplemented = errors.NotImplementedf("not implemented")
@@ -360,8 +364,8 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*storage.Metadata, error) {
 	if err != nil {
 		return nil, errors.NewNotFound(r.asPathErr(err), "Could not find metadata in path %s", p)
 	}
-	m, err := decodeMetadataFn(raw)
-	if err != nil {
+	m := new(storage.Metadata)
+	if err = decodeFn(raw, m); err != nil {
 		return nil, errors.Annotatef(err, "Could not unmarshal metadata")
 	}
 	return m, nil
@@ -382,7 +386,7 @@ func (r *repo) SaveMetadata(m storage.Metadata, iri vocab.IRI) error {
 	}
 	defer f.Close()
 
-	entryBytes, err := encodeMetadataFn(m)
+	entryBytes, err := encodeFn(m)
 	if err != nil {
 		return errors.Annotatef(err, "Could not marshal metadata")
 	}
@@ -625,7 +629,7 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	}
 	// TODO(marius): it's possible to set the encoding/decoding functions on the package or storage object level
 	//  instead of using jsonld.(Un)Marshal like this.
-	entryBytes, err := encodeFn(it)
+	entryBytes, err := encodeItemFn(it)
 	if err != nil {
 		return it, errors.Annotatef(err, "could not marshal object")
 	}
