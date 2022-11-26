@@ -533,8 +533,8 @@ func createCollections(r repo, it vocab.Item) error {
 }
 
 const (
-	objectKey   = "__raw.json"
-	metaDataKey = "__meta_data.json"
+	objectKey   = "__raw"
+	metaDataKey = "__meta_data"
 )
 
 func getMetadataKey(p string) string {

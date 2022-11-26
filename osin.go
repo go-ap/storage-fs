@@ -87,7 +87,7 @@ func isOauthStorageCollectionKey(p string) bool {
 }
 
 const (
-	oauthObjectKey = "__raw.json"
+	oauthObjectKey = "__raw"
 )
 
 func getOauthObjectKey(p string) string {
