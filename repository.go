@@ -1,10 +1,8 @@
 package fs
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/x509"
-	"encoding/gob"
 	"encoding/pem"
 	"fmt"
 	"io/fs"
@@ -29,16 +27,6 @@ import (
 var encodeItemFn = vocab.GobEncode
 var decodeItemFn = vocab.GobDecode
 
-var encodeFn = func (v any) ([]byte, error) {
-	buf := bytes.Buffer{}
-	err := gob.NewEncoder(&buf).Encode(v)
-	return buf.Bytes(), err
-}
-
-var decodeFn = func(data []byte, m any) error {
-	return gob.NewDecoder(bytes.NewReader(data)).Decode(m)
-}
-
 var errNotImplemented = errors.NotImplementedf("not implemented")
 
 type loggerFn func(string, ...interface{})
@@ -48,8 +36,8 @@ var defaultLogFn = func(string, ...interface{}) {}
 type Config struct {
 	Path        string
 	CacheEnable bool
-	LogFn loggerFn
-	ErrFn loggerFn
+	LogFn       loggerFn
+	ErrFn       loggerFn
 }
 
 type Filterable = vocab.LinkOrIRI

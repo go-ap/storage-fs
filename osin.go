@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"bytes"
 	"encoding/gob"
 	"os"
 	"path"
@@ -59,6 +60,16 @@ type acc struct {
 
 type ref struct {
 	Access string
+}
+
+var encodeFn = func(v any) ([]byte, error) {
+	buf := bytes.Buffer{}
+	err := gob.NewEncoder(&buf).Encode(v)
+	return buf.Bytes(), err
+}
+
+var decodeFn = func(data []byte, m any) error {
+	return gob.NewDecoder(bytes.NewReader(data)).Decode(m)
 }
 
 func interfaceIsNil(c interface{}) bool {
