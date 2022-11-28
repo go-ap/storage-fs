@@ -24,8 +24,8 @@ import (
 	"golang.org/x/crypto/ed25519"
 )
 
-var encodeItemFn = vocab.GobEncode
-var decodeItemFn = vocab.GobDecode
+var encodeItemFn = vocab.MarshalJSON
+var decodeItemFn = vocab.UnmarshalJSON
 
 var errNotImplemented = errors.NotImplementedf("not implemented")
 

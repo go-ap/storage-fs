@@ -2,14 +2,13 @@ package fs
 
 import (
 	"bytes"
-	"encoding/gob"
+	"encoding/json"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
 	"time"
 
-	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
 	"github.com/openshift/osin"
 )
@@ -22,10 +21,6 @@ const (
 	refreshBucket   = "refresh"
 	folder          = "oauth"
 )
-
-func init() {
-	gob.Register(vocab.IRI(""))
-}
 
 type cl struct {
 	Id          string
@@ -64,12 +59,12 @@ type ref struct {
 
 var encodeFn = func(v any) ([]byte, error) {
 	buf := bytes.Buffer{}
-	err := gob.NewEncoder(&buf).Encode(v)
+	err := json.NewEncoder(&buf).Encode(v)
 	return buf.Bytes(), err
 }
 
 var decodeFn = func(data []byte, m any) error {
-	return gob.NewDecoder(bytes.NewReader(data)).Decode(m)
+	return json.NewDecoder(bytes.NewReader(data)).Decode(m)
 }
 
 func interfaceIsNil(c interface{}) bool {
