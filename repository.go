@@ -673,6 +673,7 @@ func onCollection(r *repo, col vocab.IRI, it vocab.Item, fn func(p string) error
 		}
 		return errors.Annotatef(err, "Unable to save entries to collection %s", itPath)
 	}
+	r.cache.Remove(col)
 	return nil
 }
 
