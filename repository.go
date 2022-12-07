@@ -261,6 +261,10 @@ func (r *repo) AddTo(col vocab.IRI, it vocab.Item) error {
 		if err != nil {
 			return errors.Annotatef(err, "Unable to create collection folder %s", p)
 		}
+		// NOTE(marius): if 'it' IRI belongs to the 'col' collection we can skip symlinking it
+		if it.GetLink().Contains(col, true) {
+			return nil
+		}
 		inCollection := false
 		if fileInfo, err := ioutil.ReadDir(p); err == nil {
 			for _, fi := range fileInfo {
@@ -284,6 +288,11 @@ func (r *repo) AddTo(col vocab.IRI, it vocab.Item) error {
 		}
 		// NOTE(marius): using filepath.Rel returns one extra parent for some reason, I need to look into why
 		itPath = strings.Replace(itPath, "../", "", 1)
+		if itPath == "." {
+			// NOTE(marius): if the relative path resolves to the current folder, we don't try to symlink
+			r.logFn("symlinking path resolved to the current directory: %s", itPath)
+			return nil
+		}
 
 		// NOTE(marius): we can't use hard links as we're linking to folders :(
 		// This would have been tremendously easier (as in, not having to compute paths) with hard-links.
