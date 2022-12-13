@@ -225,6 +225,28 @@ func isHardLink(fi os.FileInfo) bool {
 
 var allStorageCollections = append(vocab.ActivityPubCollections, ap.FedBOXCollections...)
 
+func iriLinkPath(iri vocab.IRI) string {
+	u, err := iri.URL()
+	if err != nil {
+		return ""
+	}
+
+	pieces := make([]string, 0)
+	if h := u.Host; h != "" {
+		pieces = append(pieces, h)
+	}
+	if p := u.Path; p != "" && p != "/" {
+		pieces = append(pieces, p)
+	}
+	if u.ForceQuery || u.RawQuery != "" {
+		pieces = append(pieces, "?"+u.RawQuery)
+	}
+	if u.Fragment != "" {
+		pieces = append(pieces, "#"+u.EscapedFragment())
+	}
+	return url.PathEscape(filepath.Join(pieces...))
+}
+
 // AddTo
 func (r *repo) AddTo(col vocab.IRI, it vocab.Item) error {
 	err := r.Open()
@@ -253,7 +275,8 @@ func (r *repo) AddTo(col vocab.IRI, it vocab.Item) error {
 
 	linkPath := r.itemStoragePath(link)
 	itOriginalPath := r.itemStoragePath(it.GetLink())
-	fullLink := path.Join(linkPath, url.PathEscape(iriPath(it.GetLink())))
+
+	fullLink := path.Join(linkPath, iriLinkPath(it.GetLink()))
 
 	// we create a symlink to the persisted object in the current collection
 	return onCollection(r, col, it, func(p string) error {
