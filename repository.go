@@ -225,7 +225,7 @@ func isHardLink(fi os.FileInfo) bool {
 
 var allStorageCollections = append(vocab.ActivityPubCollections, ap.FedBOXCollections...)
 
-func iriLinkPath(iri vocab.IRI) string {
+func iriPath(iri vocab.IRI) string {
 	u, err := iri.URL()
 	if err != nil {
 		return ""
@@ -238,13 +238,13 @@ func iriLinkPath(iri vocab.IRI) string {
 	if p := u.Path; p != "" && p != "/" {
 		pieces = append(pieces, p)
 	}
-	if u.ForceQuery || u.RawQuery != "" {
-		pieces = append(pieces, "?"+u.RawQuery)
-	}
+	//if u.ForceQuery || u.RawQuery != "" {
+	//	pieces = append(pieces, url.PathEscape(u.RawQuery))
+	//}
 	if u.Fragment != "" {
-		pieces = append(pieces, "#"+u.EscapedFragment())
+		pieces = append(pieces, url.PathEscape(u.Fragment))
 	}
-	return url.PathEscape(filepath.Join(pieces...))
+	return filepath.Join(pieces...)
 }
 
 // AddTo
@@ -276,7 +276,7 @@ func (r *repo) AddTo(col vocab.IRI, it vocab.Item) error {
 	linkPath := r.itemStoragePath(link)
 	itOriginalPath := r.itemStoragePath(it.GetLink())
 
-	fullLink := path.Join(linkPath, iriLinkPath(it.GetLink()))
+	fullLink := path.Join(linkPath, url.PathEscape(iriPath(it.GetLink())))
 
 	// we create a symlink to the persisted object in the current collection
 	return onCollection(r, col, it, func(p string) error {
@@ -309,7 +309,7 @@ func (r *repo) AddTo(col vocab.IRI, it vocab.Item) error {
 		if itOriginalPath, err = filepath.Rel(fullLink, itOriginalPath); err != nil {
 			return err
 		}
-		// NOTE(marius): using filepath.Rel returns one extra parent for some reason, I need to look into why
+		// TODO(marius): using filepath.Rel returns one extra parent for some reason, I need to look into why
 		itOriginalPath = strings.Replace(itOriginalPath, "../", "", 1)
 		if itOriginalPath == "." {
 			// NOTE(marius): if the relative path resolves to the current folder, we don't try to symlink
@@ -508,14 +508,6 @@ var storageCollectionPaths = append(ap.FedBOXCollections, append(vocab.OfActor, 
 func isStorageCollectionKey(p string) bool {
 	lst := vocab.CollectionPath(filepath.Base(p))
 	return storageCollectionPaths.Contains(lst)
-}
-
-func iriPath(iri vocab.IRI) string {
-	url, err := iri.URL()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(url.Host, url.Path)
 }
 
 func (r repo) itemStoragePath(iri vocab.IRI) string {
