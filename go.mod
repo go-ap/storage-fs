@@ -3,7 +3,7 @@ module github.com/go-ap/storage-fs
 go 1.19
 
 require (
-	github.com/go-ap/activitypub v0.0.0-20221209114049-1ceafda50f9f
+	github.com/go-ap/activitypub v0.0.0-20230218112952-bfb607b04799
 	github.com/go-ap/errors v0.0.0-20221205040414-01c1adfc98ea
 	github.com/go-ap/fedbox v0.0.0-20221120045022-07cf64331c4c
 	github.com/openshift/osin v1.0.1
@@ -27,7 +27,7 @@ require (
 	github.com/rs/xid v1.4.0 // indirect
 	github.com/rs/zerolog v1.28.0 // indirect
 	github.com/stretchr/testify v1.8.1 // indirect
-	github.com/valyala/fastjson v1.6.3 // indirect
+	github.com/valyala/fastjson v1.6.4 // indirect
 	golang.org/x/net v0.2.0 // indirect
 	golang.org/x/oauth2 v0.2.0 // indirect
 	golang.org/x/sys v0.2.0 // indirect
