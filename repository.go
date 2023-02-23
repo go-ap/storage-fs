@@ -41,8 +41,13 @@ type Config struct {
 
 type Filterable = vocab.LinkOrIRI
 
+var errMissingPath = errors.Newf("missing path in config")
+
 // New returns a new repo repository
 func New(c Config) (*repo, error) {
+	if c.Path == "" {
+		return nil, errMissingPath
+	}
 	p, err := getAbsStoragePath(c.Path)
 	if err != nil {
 		return nil, err
