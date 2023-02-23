@@ -17,7 +17,6 @@ import (
 
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
-	ap "github.com/go-ap/fedbox/activitypub"
 	"github.com/go-ap/fedbox/storage"
 	"github.com/go-ap/storage-fs/internal/cache"
 	"golang.org/x/crypto/bcrypt"
@@ -112,6 +111,17 @@ func (r *repo) CreateService(service vocab.Service) error {
 	return err
 }
 
+func IsItemIRI(iri vocab.IRI) bool {
+	u, err := iri.URL()
+	if err != nil {
+		return false
+	}
+	maybeID := vocab.CollectionPath(path.Base(u.Path))
+	maybeCol := vocab.CollectionPath(path.Base(path.Dir(u.Path)))
+	return !(fedBOXCollections.Contains(maybeID) || vocab.OfActor.Contains(maybeID) || vocab.OfObject.Contains(maybeID)) &&
+		(fedBOXCollections.Contains(maybeCol) || vocab.OfActor.Contains(maybeCol) || vocab.OfObject.Contains(maybeCol))
+}
+
 // Load
 func (r *repo) Load(i vocab.IRI) (vocab.Item, error) {
 	if err := r.Open(); err != nil {
@@ -119,13 +129,13 @@ func (r *repo) Load(i vocab.IRI) (vocab.Item, error) {
 	}
 	defer r.Close()
 
-	f, err := ap.FiltersFromIRI(i)
+	_, err := FiltersFromIRI(i)
 	if err != nil {
 		return nil, err
 	}
 
-	ret, err := r.loadFromPath(f)
-	if len(ret) == 1 && f.IsItemIRI() {
+	ret, err := r.loadFromPath(nil)
+	if len(ret) == 1 && IsItemIRI(i) {
 		return ret.First(), err
 	}
 	return ret, err
@@ -170,7 +180,7 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 
 	ob, t := vocab.Split(col)
 	var link vocab.IRI
-	if ap.ValidCollection(t) {
+	if ValidCollection(t) {
 		// Create the collection on the object, if it doesn't exist
 		i, err := r.loadOneFromPath(ob)
 		if err != nil {
@@ -223,7 +233,7 @@ func isHardLink(fi os.FileInfo) bool {
 	return nlink > 1 && !fi.IsDir()
 }
 
-var allStorageCollections = append(vocab.ActivityPubCollections, ap.FedBOXCollections...)
+var allStorageCollections = append(vocab.ActivityPubCollections, fedBOXCollections...)
 
 func iriPath(iri vocab.IRI) string {
 	u, err := iri.URL()
@@ -503,7 +513,7 @@ func createOrOpenFile(p string) (*os.File, error) {
 	return os.OpenFile(p, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 }
 
-var storageCollectionPaths = append(ap.FedBOXCollections, append(vocab.OfActor, vocab.OfObject...)...)
+var storageCollectionPaths = append(fedBOXCollections, append(vocab.OfActor, vocab.OfObject...)...)
 
 func isStorageCollectionKey(p string) bool {
 	lst := vocab.CollectionPath(filepath.Base(p))
@@ -766,36 +776,15 @@ func loadFilteredPropsForObject(r repo, f Filterable) func(o *vocab.Object) erro
 
 func loadFilteredPropsForActivity(r repo, f Filterable) func(a *vocab.Activity) error {
 	return func(a *vocab.Activity) error {
-		if ok, fo := ap.FiltersOnActivityObject(f); ok && !vocab.IsNil(a.Object) && vocab.IsIRI(a.Object) {
-			if ob, err := r.loadOneFromPath(a.Object.GetLink()); err == nil {
-				a.Object, _ = ap.FilterIt(ob, fo)
-			}
-			if a.Object == nil {
-				return subFilterValidationError
-			}
-		}
+		a.Object, _ = r.loadOneFromPath(a.Object.GetLink())
 		return vocab.OnIntransitiveActivity(a, loadFilteredPropsForIntransitiveActivity(r, f))
 	}
 }
 
 func loadFilteredPropsForIntransitiveActivity(r repo, f Filterable) func(a *vocab.IntransitiveActivity) error {
 	return func(a *vocab.IntransitiveActivity) error {
-		if ok, fa := ap.FiltersOnActivityActor(f); ok && !vocab.IsNil(a.Actor) && vocab.IsIRI(a.Actor) {
-			if act, err := r.loadOneFromPath(a.Actor.GetLink()); err == nil {
-				a.Actor, _ = ap.FilterIt(act, fa)
-			}
-			if a.Actor == nil {
-				return subFilterValidationError
-			}
-		}
-		if ok, ft := ap.FiltersOnActivityTarget(f); ok && !vocab.IsNil(a.Target) && vocab.IsIRI(a.Target) {
-			if t, err := r.loadOneFromPath(a.Target.GetLink()); err == nil {
-				a.Target, _ = ap.FilterIt(t, ft)
-			}
-			if a.Target == nil {
-				return subFilterValidationError
-			}
-		}
+		a.Actor, _ = r.loadOneFromPath(a.Actor.GetLink())
+		a.Target, _ = r.loadOneFromPath(a.Target.GetLink())
 		return vocab.OnObject(a, loadFilteredPropsForObject(r, f))
 	}
 }
@@ -899,8 +888,12 @@ func (r repo) loadItem(p string, f Filterable) (vocab.Item, error) {
 
 	r.cache.Set(it.GetLink(), it)
 	if f != nil {
-		return ap.FilterIt(it, f)
+		return FilterIt(it, f)
 	}
+	return it, nil
+}
+
+func FilterIt(it vocab.Item, _ any) (vocab.Item, error) {
 	return it, nil
 }
 
@@ -909,6 +902,8 @@ func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
 	col := make(vocab.ItemCollection, 0)
 
 	itPath := r.itemStoragePath(f.GetLink())
+	limitItems := -1
+
 	if isStorageCollectionKey(itPath) || itPath == r.path {
 		err = filepath.Walk(itPath, func(p string, info os.FileInfo, err error) error {
 			if err != nil && os.IsNotExist(err) {
@@ -930,6 +925,9 @@ func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
 			}
 			if it, _ := r.loadItem(getObjectKey(p), f); !vocab.IsNil(it) {
 				col = append(col, it)
+				if limitItems > 0 && len(col) >= limitItems {
+					return fs.SkipAll
+				}
 			}
 			return nil
 		})

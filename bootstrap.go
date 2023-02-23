@@ -1,18 +1,26 @@
 package fs
 
 import (
-	"os"
-
 	vocab "github.com/go-ap/activitypub"
-	ap "github.com/go-ap/fedbox/activitypub"
 	"github.com/go-ap/storage-fs/internal/cache"
+	"net/url"
+	"os"
 )
 
 func Clean(conf Config) error {
 	return os.RemoveAll(conf.Path)
 }
 
-func Bootstrap(conf Config, url string) error {
+func defaultServiceIRI(baseURL string) vocab.IRI {
+	u, _ := url.Parse(baseURL)
+	// TODO(marius): I don't like adding the / folder to something like http://fedbox.git
+	if u.Path == "" {
+		u.Path = "/"
+	}
+	return vocab.IRI(u.String())
+}
+
+func Bootstrap(conf Config, self vocab.Item) error {
 	r, err := New(conf)
 	if err != nil {
 		return err
@@ -22,19 +30,6 @@ func Bootstrap(conf Config, url string) error {
 		return err
 	}
 	defer r.Close()
-	self := ap.Self(ap.DefaultServiceIRI(url))
-	actors := &vocab.OrderedCollection{ID: ap.ActorsType.IRI(self)}
-	if _, err = r.Create(actors); err != nil {
-		return err
-	}
-	activities := &vocab.OrderedCollection{ID: ap.ActivitiesType.IRI(self)}
-	if _, err = r.Create(activities); err != nil {
-		return err
-	}
-	objects := &vocab.OrderedCollection{ID: ap.ObjectsType.IRI(self)}
-	if _, err = r.Create(objects); err != nil {
-		return err
-	}
 	return nil
 }
 
