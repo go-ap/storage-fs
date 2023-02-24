@@ -55,10 +55,7 @@ func New(c Config) (*repo, error) {
 	if err := mkDirIfNotExists(p); err != nil {
 		return nil, err
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
+	cwd, _ := os.Getwd()
 	b := repo{
 		path:  p,
 		cwd:   cwd,
