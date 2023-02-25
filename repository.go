@@ -113,8 +113,7 @@ func (r *repo) CreateService(service *vocab.Service) error {
 			return nil
 		}
 		for _, stream := range service.Streams {
-			_, err := r.Create(&vocab.OrderedCollection{ID: stream.GetID()})
-			if err != nil {
+			if _, err := r.Create(&vocab.OrderedCollection{ID: stream.GetID()}); err != nil {
 				r.errFn("Unable to create %s collection for actor %s", stream.GetID(), service.GetLink())
 			}
 		}
