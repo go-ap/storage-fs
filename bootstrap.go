@@ -1,10 +1,11 @@
 package fs
 
 import (
-	vocab "github.com/go-ap/activitypub"
-	"github.com/go-ap/storage-fs/internal/cache"
 	"net/url"
 	"os"
+
+	vocab "github.com/go-ap/activitypub"
+	"github.com/go-ap/storage-fs/internal/cache"
 )
 
 func Clean(conf Config) error {
@@ -30,7 +31,8 @@ func Bootstrap(conf Config, self vocab.Item) error {
 		return err
 	}
 	defer r.Close()
-	return nil
+
+	return vocab.OnActor(self, r.CreateService)
 }
 
 func (r *repo) Reset() {

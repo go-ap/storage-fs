@@ -17,7 +17,8 @@ import (
 
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
-	"github.com/go-ap/fedbox/storage"
+	"github.com/go-ap/filters"
+	"github.com/go-ap/processing"
 	"github.com/go-ap/storage-fs/internal/cache"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/ed25519"
@@ -39,7 +40,7 @@ type Config struct {
 	ErrFn       loggerFn
 }
 
-type Filterable = vocab.LinkOrIRI
+type Filterable = processing.Filterable
 
 var errMissingPath = errors.Newf("missing path in config")
 
@@ -96,7 +97,7 @@ func (r *repo) Close() {
 	r.close()
 }
 
-func (r *repo) CreateService(service vocab.Service) error {
+func (r *repo) CreateService(service *vocab.Service) error {
 	err := r.Open()
 	defer r.Close()
 	if err != nil {
@@ -108,20 +109,18 @@ func (r *repo) CreateService(service vocab.Service) error {
 		if !id.IsValid() {
 			op = "Added new"
 		}
+		if service.Streams == nil {
+			return nil
+		}
+		for _, stream := range service.Streams {
+			_, err := r.Create(&vocab.OrderedCollection{ID: stream.GetID()})
+			if err != nil {
+				r.errFn("Unable to create %s collection for actor %s", stream.GetID(), service.GetLink())
+			}
+		}
 		r.logFn("%s %s: %s", op, it.GetType(), it.GetLink())
 	}
 	return err
-}
-
-func IsItemIRI(iri vocab.IRI) bool {
-	u, err := iri.URL()
-	if err != nil {
-		return false
-	}
-	maybeID := vocab.CollectionPath(path.Base(u.Path))
-	maybeCol := vocab.CollectionPath(path.Base(path.Dir(u.Path)))
-	return !(fedBOXCollections.Contains(maybeID) || vocab.OfActor.Contains(maybeID) || vocab.OfObject.Contains(maybeID)) &&
-		(fedBOXCollections.Contains(maybeCol) || vocab.OfActor.Contains(maybeCol) || vocab.OfObject.Contains(maybeCol))
 }
 
 // Load
@@ -131,13 +130,13 @@ func (r *repo) Load(i vocab.IRI) (vocab.Item, error) {
 	}
 	defer r.Close()
 
-	_, err := FiltersFromIRI(i)
+	f, err := filters.FiltersFromIRI(i)
 	if err != nil {
 		return nil, err
 	}
 
-	ret, err := r.loadFromPath(nil)
-	if len(ret) == 1 && IsItemIRI(i) {
+	ret, err := r.loadFromPath(f)
+	if len(ret) == 1 && f.IsItemIRI() {
 		return ret.First(), err
 	}
 	return ret, err
@@ -182,7 +181,7 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 
 	ob, t := vocab.Split(col)
 	var link vocab.IRI
-	if ValidCollection(t) {
+	if filters.ValidCollection(t) {
 		// Create the collection on the object, if it doesn't exist
 		i, err := r.loadOneFromPath(ob)
 		if err != nil {
@@ -366,7 +365,7 @@ func (r *repo) PasswordSet(it vocab.Item, pw []byte) error {
 	if err != nil {
 		return errors.Annotatef(err, "could not generate pw hash")
 	}
-	m := storage.Metadata{
+	m := Metadata{
 		Pw: pw,
 	}
 	return r.SaveMetadata(m, it.GetLink())
@@ -385,7 +384,7 @@ func (r *repo) PasswordCheck(it vocab.Item, pw []byte) error {
 }
 
 // LoadMetadata
-func (r *repo) LoadMetadata(iri vocab.IRI) (*storage.Metadata, error) {
+func (r *repo) LoadMetadata(iri vocab.IRI) (*Metadata, error) {
 	err := r.Open()
 	defer r.Close()
 	if err != nil {
@@ -397,7 +396,7 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*storage.Metadata, error) {
 	if err != nil {
 		return nil, errors.NewNotFound(r.asPathErr(err), "Could not find metadata in path %s", p)
 	}
-	m := new(storage.Metadata)
+	m := new(Metadata)
 	if err = decodeFn(raw, m); err != nil {
 		return nil, errors.Annotatef(err, "Could not unmarshal metadata")
 	}
@@ -405,7 +404,7 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*storage.Metadata, error) {
 }
 
 // SaveMetadata
-func (r *repo) SaveMetadata(m storage.Metadata, iri vocab.IRI) error {
+func (r *repo) SaveMetadata(m Metadata, iri vocab.IRI) error {
 	err := r.Open()
 	defer r.Close()
 	if err != nil {
@@ -450,6 +449,11 @@ func (r *repo) LoadKey(iri vocab.IRI) (crypto.PrivateKey, error) {
 	return prvKey, nil
 }
 
+type Metadata struct {
+	Pw         []byte `jsonld:"pw,omitempty"`
+	PrivateKey []byte `jsonld:"key,omitempty"`
+}
+
 // GenKey creates and saves a private key for an actor found by its IRI
 func (r *repo) GenKey(iri vocab.IRI) error {
 	ob, err := r.loadOneFromPath(iri)
@@ -464,7 +468,7 @@ func (r *repo) GenKey(iri vocab.IRI) error {
 		return err
 	}
 	if m == nil {
-		m = new(storage.Metadata)
+		m = new(Metadata)
 	}
 	if m.PrivateKey != nil {
 		return nil
@@ -778,15 +782,36 @@ func loadFilteredPropsForObject(r repo, f Filterable) func(o *vocab.Object) erro
 
 func loadFilteredPropsForActivity(r repo, f Filterable) func(a *vocab.Activity) error {
 	return func(a *vocab.Activity) error {
-		a.Object, _ = r.loadOneFromPath(a.Object.GetLink())
+		if ok, fo := filters.FiltersOnActivityObject(f); ok && !vocab.IsNil(a.Object) && vocab.IsIRI(a.Object) {
+			if ob, err := r.loadOneFromPath(a.Object.GetLink()); err == nil {
+				a.Object, _ = filters.FilterIt(ob, fo)
+			}
+			if a.Object == nil {
+				return subFilterValidationError
+			}
+		}
 		return vocab.OnIntransitiveActivity(a, loadFilteredPropsForIntransitiveActivity(r, f))
 	}
 }
 
 func loadFilteredPropsForIntransitiveActivity(r repo, f Filterable) func(a *vocab.IntransitiveActivity) error {
 	return func(a *vocab.IntransitiveActivity) error {
-		a.Actor, _ = r.loadOneFromPath(a.Actor.GetLink())
-		a.Target, _ = r.loadOneFromPath(a.Target.GetLink())
+		if ok, fa := filters.FiltersOnActivityActor(f); ok && !vocab.IsNil(a.Actor) && vocab.IsIRI(a.Actor) {
+			if act, err := r.loadOneFromPath(a.Actor.GetLink()); err == nil {
+				a.Actor, _ = filters.FilterIt(act, fa)
+			}
+			if a.Actor == nil {
+				return subFilterValidationError
+			}
+		}
+		if ok, ft := filters.FiltersOnActivityTarget(f); ok && !vocab.IsNil(a.Target) && vocab.IsIRI(a.Target) {
+			if t, err := r.loadOneFromPath(a.Target.GetLink()); err == nil {
+				a.Target, _ = filters.FilterIt(t, ft)
+			}
+			if a.Target == nil {
+				return subFilterValidationError
+			}
+		}
 		return vocab.OnObject(a, loadFilteredPropsForObject(r, f))
 	}
 }
@@ -890,12 +915,8 @@ func (r repo) loadItem(p string, f Filterable) (vocab.Item, error) {
 
 	r.cache.Set(it.GetLink(), it)
 	if f != nil {
-		return FilterIt(it, f)
+		return filters.FilterIt(it, f)
 	}
-	return it, nil
-}
-
-func FilterIt(it vocab.Item, _ any) (vocab.Item, error) {
 	return it, nil
 }
 
