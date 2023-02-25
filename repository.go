@@ -234,7 +234,7 @@ func isHardLink(fi os.FileInfo) bool {
 	return nlink > 1 && !fi.IsDir()
 }
 
-var allStorageCollections = append(vocab.ActivityPubCollections, fedBOXCollections...)
+var allStorageCollections = append(vocab.ActivityPubCollections, filters.FedBOXCollections...)
 
 func iriPath(iri vocab.IRI) string {
 	u, err := iri.URL()
@@ -513,7 +513,7 @@ func createOrOpenFile(p string) (*os.File, error) {
 	return os.OpenFile(p, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 }
 
-var storageCollectionPaths = append(fedBOXCollections, append(vocab.OfActor, vocab.OfObject...)...)
+var storageCollectionPaths = append(filters.FedBOXCollections, append(vocab.OfActor, vocab.OfObject...)...)
 
 func isStorageCollectionKey(p string) bool {
 	lst := vocab.CollectionPath(filepath.Base(p))
