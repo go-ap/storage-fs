@@ -109,14 +109,6 @@ func (r *repo) CreateService(service *vocab.Service) error {
 		if !id.IsValid() {
 			op = "Added new"
 		}
-		if service.Streams == nil {
-			return nil
-		}
-		for _, stream := range service.Streams {
-			if _, err := r.Create(&vocab.OrderedCollection{ID: stream.GetID()}); err != nil {
-				r.errFn("Unable to create %s collection for actor %s", stream.GetID(), service.GetLink())
-			}
-		}
 		r.logFn("%s %s: %s", op, it.GetType(), it.GetLink())
 	}
 	return err
