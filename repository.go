@@ -365,7 +365,7 @@ func (r *repo) PasswordSet(it vocab.Item, pw []byte) error {
 	if err != nil {
 		return errors.Annotatef(err, "could not generate pw hash")
 	}
-	m := Metadata{
+	m := processing.Metadata{
 		Pw: pw,
 	}
 	return r.SaveMetadata(m, it.GetLink())
@@ -377,6 +377,7 @@ func (r *repo) PasswordCheck(it vocab.Item, pw []byte) error {
 	if err != nil {
 		return errors.Annotatef(err, "Could not find load metadata for %s", it)
 	}
+
 	if err := bcrypt.CompareHashAndPassword(m.Pw, pw); err != nil {
 		return errors.NewUnauthorized(err, "Invalid pw")
 	}
@@ -384,7 +385,7 @@ func (r *repo) PasswordCheck(it vocab.Item, pw []byte) error {
 }
 
 // LoadMetadata
-func (r *repo) LoadMetadata(iri vocab.IRI) (*Metadata, error) {
+func (r *repo) LoadMetadata(iri vocab.IRI) (*processing.Metadata, error) {
 	err := r.Open()
 	defer r.Close()
 	if err != nil {
@@ -396,7 +397,7 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*Metadata, error) {
 	if err != nil {
 		return nil, errors.NewNotFound(r.asPathErr(err), "Could not find metadata in path %s", p)
 	}
-	m := new(Metadata)
+	m := new(processing.Metadata)
 	if err = decodeFn(raw, m); err != nil {
 		return nil, errors.Annotatef(err, "Could not unmarshal metadata")
 	}
@@ -404,7 +405,7 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*Metadata, error) {
 }
 
 // SaveMetadata
-func (r *repo) SaveMetadata(m Metadata, iri vocab.IRI) error {
+func (r *repo) SaveMetadata(m processing.Metadata, iri vocab.IRI) error {
 	err := r.Open()
 	defer r.Close()
 	if err != nil {
@@ -438,6 +439,7 @@ func (r *repo) LoadKey(iri vocab.IRI) (crypto.PrivateKey, error) {
 	if err != nil {
 		return nil, r.asPathErr(err)
 	}
+
 	b, _ := pem.Decode(m.PrivateKey)
 	if b == nil {
 		return nil, errors.Errorf("failed decoding pem")
@@ -447,11 +449,6 @@ func (r *repo) LoadKey(iri vocab.IRI) (crypto.PrivateKey, error) {
 		return nil, err
 	}
 	return prvKey, nil
-}
-
-type Metadata struct {
-	Pw         []byte `jsonld:"pw,omitempty"`
-	PrivateKey []byte `jsonld:"key,omitempty"`
 }
 
 // GenKey creates and saves a private key for an actor found by its IRI
@@ -466,9 +463,6 @@ func (r *repo) GenKey(iri vocab.IRI) error {
 	m, err := r.LoadMetadata(iri)
 	if err != nil && !errors.IsNotFound(err) {
 		return err
-	}
-	if m == nil {
-		m = new(Metadata)
 	}
 	if m.PrivateKey != nil {
 		return nil
