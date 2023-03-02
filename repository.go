@@ -934,7 +934,7 @@ func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
 			if it, _ := r.loadItem(getObjectKey(p), f); !vocab.IsNil(it) {
 				col = append(col, it)
 				if limitItems > 0 && len(col) >= limitItems {
-					return fs.SkipAll
+					return skipAll
 				}
 			}
 			return nil
