@@ -4,4 +4,4 @@ package fs
 
 import "path/filepath"
 
-var skipAll = filepath.Skip
+var skipAll = filepath.SkipDir
