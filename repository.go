@@ -952,7 +952,11 @@ func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
 				// contain the path, so we set the filter to a nil value
 				f = nil
 			}
-			if it, _ := r.loadItem(getObjectKey(p), f); !vocab.IsNil(it) {
+			it, err := r.loadItem(getObjectKey(p), f)
+			if err != nil {
+				r.errFn("unable to load %s: %s", p, err.Error())
+			}
+			if !vocab.IsNil(it) {
 				col = append(col, it)
 				if limitItems > 0 && len(col) >= limitItems {
 					return skipAll
@@ -963,6 +967,7 @@ func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
 	} else {
 		it, err := r.loadItem(getObjectKey(itPath), f)
 		if err != nil {
+			r.errFn("unable to load %s: %s", itPath, err.Error())
 			return nil, errors.NewNotFound(err, "not found")
 		}
 		if !vocab.IsNil(it) {
