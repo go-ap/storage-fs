@@ -831,7 +831,7 @@ func getOriginalIRI(p string) (vocab.Item, error) {
 	dir := path.Dir(p)
 	fi, err := os.Stat(dir)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	if !fi.IsDir() {
 		return nil, nil
@@ -960,7 +960,7 @@ func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
 			}
 			it, err := r.loadItem(getObjectKey(p), f)
 			if err != nil {
-				r.errFn("unable to load %s: %s", p, err.Error())
+				r.errFn("unable to load %s: %s", f.GetLink(), err.Error())
 			}
 			if !vocab.IsNil(it) {
 				col = append(col, it)
@@ -973,7 +973,7 @@ func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
 	} else {
 		it, err := r.loadItem(getObjectKey(itPath), f)
 		if err != nil {
-			r.errFn("unable to load %s: %s", itPath, err.Error())
+			r.errFn("unable to load %s: %s", f.GetLink(), err.Error())
 			return nil, errors.NewNotFound(err, "not found")
 		}
 		if !vocab.IsNil(it) {
