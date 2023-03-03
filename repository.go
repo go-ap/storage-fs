@@ -64,6 +64,12 @@ func New(c Config) (*repo, error) {
 		errFn: defaultLogFn,
 		cache: cache.New(c.CacheEnable),
 	}
+	if c.LogFn != nil {
+		b.logFn = c.LogFn
+	}
+	if c.ErrFn != nil {
+		b.errFn = c.ErrFn
+	}
 	return &b, nil
 }
 
