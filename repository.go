@@ -207,9 +207,7 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 	if err != nil {
 		return err
 	}
-	if r.cache != nil {
-		r.cache.Remove(it.GetLink())
-	}
+	r.removeFromCache(it)
 	return nil
 }
 
@@ -586,10 +584,15 @@ func deleteCollectionFromPath(r repo, it vocab.Item) error {
 	} else if fi.IsDir() {
 		return os.Remove(itPath)
 	}
-	if r.cache != nil {
-		r.cache.Remove(it.GetLink())
-	}
+	r.removeFromCache(it)
 	return nil
+}
+
+func (r repo) removeFromCache(it Filterable) {
+	if r.cache == nil || it == nil {
+		return
+	}
+	r.cache.Remove(it.GetLink())
 }
 
 // deleteCollections
@@ -638,9 +641,7 @@ func deleteItem(r *repo, it vocab.Item) error {
 	if err := os.RemoveAll(itemPath); err != nil {
 		return err
 	}
-	if r.cache != nil {
-		r.cache.Remove(it.GetLink())
-	}
+	r.removeFromCache(it)
 	return nil
 }
 
@@ -676,9 +677,7 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 		return it, errors.Annotatef(err, "failed writing object")
 	}
 
-	if r.cache != nil {
-		r.cache.Set(it.GetLink(), it)
-	}
+	r.setToCache(it)
 	return it, nil
 }
 
@@ -701,9 +700,7 @@ func onCollection(r *repo, col vocab.IRI, it vocab.Item, fn func(p string) error
 		}
 		return errors.Annotatef(err, "Unable to save entries to collection %s", itPath)
 	}
-	if r.cache != nil {
-		r.cache.Remove(col)
-	}
+	r.removeFromCache(col)
 	return nil
 }
 
@@ -851,12 +848,17 @@ func getOriginalIRI(p string) (vocab.Item, error) {
 	return vocab.IRI(u.String()), nil
 }
 
+func (r repo) loadFromCache(f Filterable) vocab.Item {
+	if f == nil || r.cache == nil {
+		return nil
+	}
+	return r.cache.Get(f.GetLink())
+}
+
 func (r repo) loadItem(p string, f Filterable) (vocab.Item, error) {
 	var it vocab.Item
-	if r.cache != nil {
-		if cachedIt := r.cache.Get(f.GetLink()); cachedIt != nil {
-			it = cachedIt
-		}
+	if cachedIt := r.loadFromCache(f); cachedIt != nil {
+		it = cachedIt
 	}
 	if vocab.IsNil(it) {
 		raw, err := loadRawFromPath(p)
@@ -910,13 +912,18 @@ func (r repo) loadItem(p string, f Filterable) (vocab.Item, error) {
 		}
 	}
 
-	if r.cache != nil {
-		r.cache.Set(it.GetLink(), it)
-	}
+	r.setToCache(it)
 	if f != nil {
 		return filters.FilterIt(it, f)
 	}
 	return it, nil
+}
+
+func (r repo) setToCache(it vocab.Item) {
+	if it == nil || r.cache == nil {
+		return
+	}
+	r.cache.Set(it.GetLink(), it)
 }
 
 func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
