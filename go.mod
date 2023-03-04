@@ -6,10 +6,10 @@ require (
 	github.com/go-ap/activitypub v0.0.0-20230301123505-7471bcd90729
 	github.com/go-ap/errors v0.0.0-20221205040414-01c1adfc98ea
 	github.com/go-ap/filters v0.0.0-20230302122150-af8f54eb973c
-	github.com/go-ap/processing v0.0.0-20230302121732-ed89ba62d187
+	github.com/go-ap/processing v0.0.0-20230304191316-94dd94ef1b4c
 	github.com/openshift/osin v1.0.1
 	golang.org/x/crypto v0.6.0
-	golang.org/x/sys v0.5.0
+	golang.org/x/sys v0.6.0
 )
 
 require (
