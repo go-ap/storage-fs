@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/dsa"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -24,7 +25,6 @@ import (
 	"github.com/go-ap/processing"
 	"github.com/go-ap/storage-fs/internal/cache"
 	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/crypto/ed25519"
 )
 
 var encodeItemFn = vocab.MarshalJSON
