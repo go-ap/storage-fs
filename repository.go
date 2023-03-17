@@ -1033,7 +1033,7 @@ func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
 			}
 			it, err := r.loadItem(getObjectKey(p), f)
 			if err != nil {
-				r.errFn("unable to load %s: %s", f.GetLink(), err.Error())
+				r.errFn("unable to load %s: %s", p, err.Error())
 			}
 			if !vocab.IsNil(it) {
 				col = append(col, it)
