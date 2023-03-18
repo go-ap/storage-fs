@@ -1,10 +1,11 @@
 package fs
 
 import (
-	"github.com/go-ap/errors"
 	"os"
 	"testing"
 
+	vocab "github.com/go-ap/activitypub"
+	"github.com/go-ap/errors"
 	"github.com/go-ap/storage-fs/internal/cache"
 	"golang.org/x/sys/unix"
 )
@@ -116,6 +117,73 @@ func Test_repo_Open(t *testing.T) {
 				t.Errorf("Open() cwd path is not correct = %s, want %s", r.path, tt.fields.path)
 			}
 			defer r.Close()
+		})
+	}
+}
+
+func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
+	return &vocab.OrderedCollection{
+		ID:   id,
+		Type: vocab.OrderedCollectionType,
+	}
+}
+
+func Test_repo_createCollection(t *testing.T) {
+	type fields struct {
+		baseURL string
+		path    string
+		cwd     string
+		opened  bool
+		cache   cache.CanStore
+		logFn   loggerFn
+		errFn   loggerFn
+	}
+	tests := []struct {
+		name     string
+		fields   fields
+		iri      vocab.IRI
+		expected vocab.CollectionInterface
+		wantErr  bool
+	}{
+		{
+			name: "example.com/replies",
+			fields: fields{
+				baseURL: "https://example.com",
+				opened:  false,
+				logFn:   t.Logf,
+				errFn:   t.Errorf,
+			},
+			iri:      "https://example.com/replies",
+			expected: expectedCol("https://example.com/replies"),
+			wantErr:  false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				baseURL: tt.fields.baseURL,
+				path:    t.TempDir(),
+				cwd:     tt.fields.cwd,
+				opened:  tt.fields.opened,
+				cache:   cache.New(false),
+				logFn:   tt.fields.logFn,
+				errFn:   tt.fields.errFn,
+			}
+			col, err := r.createCollection(tt.iri)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if !vocab.ItemsEqual(col, tt.expected) {
+				t.Errorf("Returned collection is not equal to expected %v: %v", tt.expected, col)
+			}
+			saved, err := r.Load(tt.iri)
+			if err != nil {
+				t.Errorf("Unable to load collection at IRI %q: %s", tt.iri, err)
+			}
+			if !vocab.ItemsEqual(saved, tt.expected) {
+				t.Errorf("Saved collection is not equal to expected %v: %v", tt.expected, saved)
+			}
 		})
 	}
 }
