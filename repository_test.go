@@ -87,8 +87,9 @@ func Test_repo_Open(t *testing.T) {
 			wantErr: error(unix.ENOENT),
 		},
 		{
-			name:   "skips opening",
-			fields: fields{opened: true},
+			name:    "empty",
+			fields:  fields{},
+			wantErr: error(unix.ENOENT),
 		},
 	}
 	for _, tt := range tests {
@@ -102,13 +103,8 @@ func Test_repo_Open(t *testing.T) {
 				logFn:   tt.fields.logFn,
 				errFn:   tt.fields.errFn,
 			}
-			err := r.Open()
-			if !errors.Is(err, tt.wantErr) {
+			if err := r.Open(); !errors.Is(err, tt.wantErr) {
 				t.Errorf("Open() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			opened := err == nil
-			if r.opened != opened {
-				t.Errorf("Open() opened is not correct = %t, want %t", r.opened, opened)
 			}
 			if r.path != tt.fields.path {
 				t.Errorf("Open() path is not correct = %s, want %s", r.path, tt.fields.path)
