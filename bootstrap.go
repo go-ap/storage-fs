@@ -3,6 +3,7 @@ package fs
 import (
 	"net/url"
 	"os"
+	"time"
 
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/storage-fs/internal/cache"
@@ -36,9 +37,18 @@ func Bootstrap(conf Config, self vocab.Item) error {
 		return err
 	}
 
+	mkCollection := func(iri vocab.IRI) vocab.CollectionInterface {
+		return &vocab.OrderedCollection{
+			ID:           iri,
+			Type:         vocab.OrderedCollectionType,
+			Published:    time.Now().UTC(),
+			AttributedTo: self,
+			CC:           vocab.ItemCollection{vocab.PublicNS},
+		}
+	}
 	return vocab.OnActor(self, func(service *vocab.Actor) error {
 		for _, stream := range service.Streams {
-			if _, err := r.Create(&vocab.OrderedCollection{ID: stream.GetID()}); err != nil {
+			if _, err := r.Create(mkCollection(stream.GetID())); err != nil {
 				r.errFn("Unable to create %s collection for actor %s", stream.GetID(), service.GetLink())
 			}
 		}

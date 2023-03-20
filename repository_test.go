@@ -1,8 +1,10 @@
 package fs
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	vocab "github.com/go-ap/activitypub"
@@ -17,8 +19,6 @@ type fields struct {
 	cwd     string
 	opened  bool
 	cache   cache.CanStore
-	logFn   loggerFn
-	errFn   loggerFn
 }
 
 func Test_New(t *testing.T) {
@@ -88,8 +88,9 @@ func Test_repo_Open(t *testing.T) {
 			wantErr: error(unix.ENOENT),
 		},
 		{
-			name:   "skips opening",
-			fields: fields{opened: true},
+			name:    "empty",
+			fields:  fields{},
+			wantErr: error(unix.ENOENT),
 		},
 	}
 	for _, tt := range tests {
@@ -100,16 +101,11 @@ func Test_repo_Open(t *testing.T) {
 				cwd:     tt.fields.cwd,
 				opened:  tt.fields.opened,
 				cache:   tt.fields.cache,
-				logFn:   tt.fields.logFn,
-				errFn:   tt.fields.errFn,
+				logFn:   t.Logf,
+				errFn:   t.Logf,
 			}
-			err := r.Open()
-			if !errors.Is(err, tt.wantErr) {
+			if err := r.Open(); !errors.Is(err, tt.wantErr) {
 				t.Errorf("Open() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			opened := err == nil
-			if r.opened != opened {
-				t.Errorf("Open() opened is not correct = %t, want %t", r.opened, opened)
 			}
 			if r.path != tt.fields.path {
 				t.Errorf("Open() path is not correct = %s, want %s", r.path, tt.fields.path)
@@ -123,17 +119,28 @@ func Test_repo_Open(t *testing.T) {
 }
 
 func Test_repo_Load(t *testing.T) {
-	mocksPath, err := filepath.Abs("./mocks")
+	mocks := make(map[vocab.IRI]vocab.Item)
+	mocksPath := filepath.Join(testCWD, "mocks")
+	err := filepath.WalkDir(mocksPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if filepath.Base(path) == objectKey {
+			iri := vocab.IRI(strings.Replace(strings.Replace(path, mocksPath, "https:/", 1), objectKey, "", 1))
+			j, _ := os.ReadFile(path)
+			m, _ := vocab.UnmarshalJSON(j)
+			mocks[iri] = m
+		}
+		return nil
+	})
 	if err != nil {
 		t.Errorf("%s", err)
+		return
 	}
-	type fields struct {
-		baseURL string
-		path    string
-		cwd     string
-		opened  bool
-		cache   cache.CanStore
-	}
+
 	tests := []struct {
 		name    string
 		fields  fields
@@ -149,13 +156,14 @@ func Test_repo_Load(t *testing.T) {
 			wantErr: error(unix.ENOENT),
 		},
 		{
-			name: "empty iri gives us the root",
+			name: "empty iri gives us not found",
 			fields: fields{
 				baseURL: "example.com",
 				path:    mocksPath,
 			},
-			args: "",
-			want: vocab.ItemCollection{vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"}},
+			args:    "",
+			want:    nil,
+			wantErr: errors.NotFoundf("file not found"),
 		},
 		{
 			name: "root iri gives us the root",
@@ -164,7 +172,7 @@ func Test_repo_Load(t *testing.T) {
 				path:    mocksPath,
 			},
 			args: "https://example.com",
-			want: vocab.ItemCollection{vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"}},
+			want: vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"},
 		},
 		{
 			name: "invalid iri gives 404",
@@ -173,7 +181,7 @@ func Test_repo_Load(t *testing.T) {
 				path:    mocksPath,
 			},
 			args:    "https://example.com/dsad",
-			want:    vocab.ItemCollection{},
+			want:    nil,
 			wantErr: os.ErrNotExist,
 		},
 	}
@@ -195,6 +203,62 @@ func Test_repo_Load(t *testing.T) {
 			}
 			if !vocab.ItemsEqual(got, tt.want) {
 				t.Errorf("Load() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
+	return &vocab.OrderedCollection{
+		ID:   id,
+		Type: vocab.OrderedCollectionType,
+	}
+}
+
+func Test_repo_createCollection(t *testing.T) {
+	tests := []struct {
+		name     string
+		fields   fields
+		iri      vocab.IRI
+		expected vocab.CollectionInterface
+		wantErr  bool
+	}{
+		{
+			name: "example.com/replies",
+			fields: fields{
+				baseURL: "https://example.com",
+				opened:  false,
+			},
+			iri:      "https://example.com/replies",
+			expected: expectedCol("https://example.com/replies"),
+			wantErr:  false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				baseURL: tt.fields.baseURL,
+				path:    t.TempDir(),
+				cwd:     tt.fields.cwd,
+				opened:  tt.fields.opened,
+				cache:   cache.New(false),
+				logFn:   t.Logf,
+				errFn:   t.Logf,
+			}
+			col, err := createCollectionInPath(r, tt.iri)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if !vocab.ItemsEqual(col, tt.expected) {
+				t.Errorf("Returned collection is not equal to expected %v: %v", tt.expected, col)
+			}
+			saved, err := r.Load(tt.iri)
+			if err != nil {
+				t.Errorf("Unable to load collection at IRI %q: %s", tt.iri, err)
+			}
+			if !vocab.ItemsEqual(saved, tt.expected) {
+				t.Errorf("Saved collection is not equal to expected %v: %v", tt.expected, saved)
 			}
 		})
 	}
