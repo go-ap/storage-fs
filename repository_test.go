@@ -1,10 +1,8 @@
 package fs
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	vocab "github.com/go-ap/activitypub"
@@ -120,6 +118,84 @@ func Test_repo_Open(t *testing.T) {
 				t.Errorf("Open() cwd path is not correct = %s, want %s", r.path, tt.fields.path)
 			}
 			defer r.Close()
+		})
+	}
+}
+
+func Test_repo_Load(t *testing.T) {
+	mocksPath, err := filepath.Abs("./mocks")
+	if err != nil {
+		t.Errorf("%s", err)
+	}
+	type fields struct {
+		baseURL string
+		path    string
+		cwd     string
+		opened  bool
+		cache   cache.CanStore
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    vocab.IRI
+		want    vocab.Item
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			fields:  fields{},
+			args:    "",
+			want:    nil,
+			wantErr: error(unix.ENOENT),
+		},
+		{
+			name: "empty iri gives us the root",
+			fields: fields{
+				baseURL: "example.com",
+				path:    mocksPath,
+			},
+			args: "",
+			want: vocab.ItemCollection{vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"}},
+		},
+		{
+			name: "root iri gives us the root",
+			fields: fields{
+				baseURL: "example.com",
+				path:    mocksPath,
+			},
+			args: "https://example.com",
+			want: vocab.ItemCollection{vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"}},
+		},
+		{
+			name: "invalid iri gives 404",
+			fields: fields{
+				baseURL: "example.com",
+				path:    mocksPath,
+			},
+			args:    "https://example.com/dsad",
+			want:    vocab.ItemCollection{},
+			wantErr: os.ErrNotExist,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				baseURL: tt.fields.baseURL,
+				path:    tt.fields.path,
+				cwd:     tt.fields.cwd,
+				opened:  tt.fields.opened,
+				cache:   tt.fields.cache,
+				logFn:   t.Logf,
+				errFn:   t.Logf,
+			}
+			got, err := r.Load(tt.args)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !vocab.ItemsEqual(got, tt.want) {
+				t.Errorf("Load() got = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }
