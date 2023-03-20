@@ -1,15 +1,17 @@
 package fs
 
 import (
-	"github.com/go-ap/errors"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	vocab "github.com/go-ap/activitypub"
+	"github.com/go-ap/errors"
 	"github.com/go-ap/storage-fs/internal/cache"
 	"golang.org/x/sys/unix"
 )
-
-var wd, _ = os.Open(".")
 
 type fields struct {
 	baseURL string
@@ -40,7 +42,7 @@ func Test_New(t *testing.T) {
 			config: Config{Path: testFolder},
 			want: fields{
 				path: testFolder,
-				cwd:  os.Getenv("PWD"),
+				cwd:  testCWD,
 			},
 		},
 		{
@@ -66,11 +68,9 @@ func Test_New(t *testing.T) {
 			if got.path != tt.want.path {
 				t.Errorf("New().path = %v, want %v", got.path, tt.want.path)
 			}
-			/*
-				if got.cwd != tt.want.cwd {
-					t.Errorf("New().cwd = %v, want %v", got.cwd, tt.want.cwd)
-				}
-			*/
+			if got.cwd != tt.want.cwd {
+				t.Errorf("New().cwd = %v, want %v", got.cwd, tt.want.cwd)
+			}
 			if got.opened != tt.want.opened {
 				t.Errorf("New().opened = %v, want %v", got.opened, tt.want.opened)
 			}
@@ -90,9 +90,8 @@ func Test_repo_Open(t *testing.T) {
 			wantErr: error(unix.ENOENT),
 		},
 		{
-			name:    "empty",
-			fields:  fields{},
-			wantErr: error(unix.ENOENT),
+			name:   "skips opening",
+			fields: fields{opened: true},
 		},
 	}
 	for _, tt := range tests {
@@ -106,8 +105,13 @@ func Test_repo_Open(t *testing.T) {
 				logFn:   tt.fields.logFn,
 				errFn:   tt.fields.errFn,
 			}
-			if err := r.Open(); !errors.Is(err, tt.wantErr) {
+			err := r.Open()
+			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("Open() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			opened := err == nil
+			if r.opened != opened {
+				t.Errorf("Open() opened is not correct = %t, want %t", r.opened, opened)
 			}
 			if r.path != tt.fields.path {
 				t.Errorf("Open() path is not correct = %s, want %s", r.path, tt.fields.path)
