@@ -244,7 +244,7 @@ func Test_repo_createCollection(t *testing.T) {
 				logFn:   t.Logf,
 				errFn:   t.Logf,
 			}
-			col, err := createCollectionInPath(*r, tt.iri)
+			col, err := createCollectionInPath(r, tt.iri)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
 			}

@@ -135,11 +135,7 @@ func (r *repo) Load(i vocab.IRI) (vocab.Item, error) {
 		return nil, err
 	}
 
-	ret, err := r.loadFromPath(f)
-	if len(ret) == 1 && f.IsItemIRI() {
-		return ret.First(), err
-	}
-	return ret, err
+	return r.loadFromPath(f)
 }
 
 // Create
@@ -150,7 +146,7 @@ func (r *repo) Create(col vocab.CollectionInterface) (vocab.CollectionInterface,
 	if len(col.GetLink()) == 0 {
 		return col, errors.Newf("Invalid collection, it does not have a valid IRI")
 	}
-	return col, mkDirIfNotExists(r.itemStoragePath(col.GetLink()))
+	return saveCollection(r, col)
 }
 
 // Save
@@ -200,8 +196,12 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 	// we create a symlink to the persisted object in the current collection
 	err = onCollection(r, col, it, func(p string) error {
 		inCollection := false
-		if fileInfo, err := ioutil.ReadDir(p); err == nil {
-			for _, fi := range fileInfo {
+		if dirInfo, err := os.ReadDir(p); err == nil {
+			for _, di := range dirInfo {
+				fi, err := di.Info()
+				if err != nil {
+					continue
+				}
 				if fi.Name() == name && (isSymLink(fi) || isHardLink(fi)) {
 					inCollection = true
 				}
@@ -260,6 +260,27 @@ func iriPath(iri vocab.IRI) string {
 	return filepath.Join(pieces...)
 }
 
+func saveCollection(r *repo, col vocab.CollectionInterface) (vocab.CollectionInterface, error) {
+	it, err := save(r, col)
+	if err != nil {
+		return nil, err
+	}
+
+	err = vocab.OnOrderedCollection(it, func(c *vocab.OrderedCollection) error {
+		col = c
+		return nil
+	})
+	return col, err
+}
+
+func createCollection(r *repo, colIRI vocab.IRI) (vocab.CollectionInterface, error) {
+	col := vocab.OrderedCollection{
+		ID:   colIRI,
+		Type: vocab.OrderedCollectionType,
+	}
+	return saveCollection(r, &col)
+}
+
 // AddTo
 func (r *repo) AddTo(col vocab.IRI, it vocab.Item) error {
 	err := r.Open()
@@ -302,8 +323,12 @@ func (r *repo) AddTo(col vocab.IRI, it vocab.Item) error {
 			return nil
 		}
 		inCollection := false
-		if fileInfo, err := ioutil.ReadDir(p); err == nil {
-			for _, fi := range fileInfo {
+		if dirInfo, err := os.ReadDir(p); err == nil {
+			for _, di := range dirInfo {
+				fi, err := di.Info()
+				if err != nil {
+					continue
+				}
 				if fi.Name() == fullLink && (isSymLink(fi) || isHardLink(fi)) {
 					inCollection = true
 				}
@@ -597,7 +622,7 @@ func (r repo) itemStoragePath(iri vocab.IRI) string {
 }
 
 // createCollections
-func createCollections(r repo, it vocab.Item) error {
+func createCollections(r *repo, it vocab.Item) error {
 	if vocab.IsNil(it) || !it.IsObject() {
 		return nil
 	}
@@ -648,8 +673,17 @@ func getObjectKey(p string) string {
 	return path.Join(p, objectKey)
 }
 
-func createCollectionInPath(r repo, it vocab.Item) (vocab.Item, error) {
+func createCollectionInPath(r *repo, it vocab.Item) (vocab.Item, error) {
 	itPath := r.itemStoragePath(it.GetLink())
+
+	colObject, err := r.loadItem(getObjectKey(itPath), it.GetLink())
+	if colObject == nil {
+		colObject, err = createCollection(r, it.GetLink())
+	}
+	if err != nil {
+		return nil, errors.Annotatef(err, "saving collection object is not done")
+	}
+
 	return it.GetLink(), r.asPathErr(mkDirIfNotExists(itPath))
 }
 
@@ -734,7 +768,7 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	itPath := r.itemStoragePath(it.GetLink())
 	mkDirIfNotExists(itPath)
 
-	if err := createCollections(*r, it); err != nil {
+	if err := createCollections(r, it); err != nil {
 		return it, errors.Annotatef(err, "could not create object's collections")
 	}
 	// TODO(marius): it's possible to set the encoding/decoding functions on the package or storage object level
@@ -1019,42 +1053,50 @@ func (r repo) setToCache(it vocab.Item) {
 	r.cache.Set(it.GetLink(), it)
 }
 
-func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
+func (r repo) loadFromPath(f Filterable) (vocab.Item, error) {
 	var err error
-	col := make(vocab.ItemCollection, 0)
+	var it vocab.Item
 
 	itPath := r.itemStoragePath(f.GetLink())
 	limitItems := -1
 
 	if isStorageCollectionKey(itPath) || itPath == r.path {
-		err = filepath.Walk(itPath, func(p string, info os.FileInfo, err error) error {
-			if err != nil && os.IsNotExist(err) {
-				if isStorageCollectionKey(p) {
-					return errors.NewNotFound(r.asPathErr(err), "not found")
+		it, err = r.loadItem(getObjectKey(itPath), f)
+		if err != nil {
+			r.errFn("unable to load collection object for %s: %s", f.GetLink(), err.Error())
+			return nil, err
+		}
+		vocab.OnCollectionIntf(it, func(col vocab.CollectionInterface) error {
+			err = filepath.Walk(itPath, func(p string, info os.FileInfo, err error) error {
+				if err != nil && os.IsNotExist(err) {
+					if isStorageCollectionKey(p) {
+						return errors.NewNotFound(r.asPathErr(err), "not found")
+					}
+					r.errFn("Error when loading path %s: %s", p, err)
+					return nil
 				}
-				r.errFn("Error when loading path %s: %s", p, err)
-				return nil
-			}
-			dirPath, _ := path.Split(p)
-			dir := strings.TrimRight(dirPath, "/")
-			if dir != itPath {
-				return nil
-			}
-			if _, ok := f.(vocab.IRI); ok {
-				// when loading a collection by path, we want to avoid filtering out IRIs that don't specifically
-				// contain the path, so we set the filter to a nil value
-				f = nil
-			}
-			it, err := r.loadItem(getObjectKey(p), f)
-			if err != nil {
-				r.errFn("unable to load %s: %s", p, err.Error())
-			}
-			if !vocab.IsNil(it) {
-				col = append(col, it)
-				if limitItems > 0 && len(col) >= limitItems {
-					return skipAll
+				dirPath, _ := path.Split(p)
+				dir := strings.TrimRight(dirPath, "/")
+				if dir != itPath || filepath.Base(p) == objectKey {
+					return nil
 				}
-			}
+				if _, ok := f.(vocab.IRI); ok {
+					// when loading a collection by path, we want to avoid filtering out IRIs that don't specifically
+					// contain the path, so we set the filter to a nil value
+					f = nil
+				}
+				ob, err := r.loadItem(p, f)
+				if err != nil {
+					r.errFn("unable to load %s: %s", p, err.Error())
+				}
+				if !vocab.IsNil(ob) {
+					col.Append(ob)
+					if limitItems > 0 && col.Count() >= uint(limitItems) {
+						return skipAll
+					}
+				}
+				return nil
+			})
 			return nil
 		})
 	} else {
@@ -1064,10 +1106,13 @@ func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
 			return nil, errors.NewNotFound(err, "not found")
 		}
 		if !vocab.IsNil(it) {
-			col = append(col, it)
+			return it, nil
 		}
 	}
-	return col, err
+	if vocab.IsNil(it) {
+		return nil, errors.NewNotFound(err, "not found")
+	}
+	return it, err
 }
 
 var testCWD = ""
