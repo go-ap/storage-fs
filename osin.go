@@ -131,7 +131,7 @@ func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) (ui
 	if isOauthStorageCollectionKey(itPath) {
 		err = filepath.Walk(itPath, func(p string, info os.FileInfo, err error) error {
 			if err != nil && os.IsNotExist(err) {
-				return errors.NotFoundf("%s not found", p)
+				return errors.NotFoundf("%s not found", sanitizePath(p, r.path))
 			}
 
 			it, _ := loadRawFromOauthPath(getOauthObjectKey(p))
@@ -146,7 +146,7 @@ func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) (ui
 		var raw []byte
 		raw, err = loadRawFromOauthPath(getOauthObjectKey(itPath))
 		if err != nil {
-			return cnt, errors.NewNotFound(err, "not found")
+			return cnt, errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
 		if raw != nil {
 			if err := loaderFn(raw); err == nil {
