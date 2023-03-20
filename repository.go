@@ -422,7 +422,7 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*processing.Metadata, error) {
 	p := r.itemStoragePath(iri)
 	raw, err := loadRawFromPath(getMetadataKey(p))
 	if err != nil {
-		return nil, errors.NewNotFound(r.asPathErr(err), "Could not find metadata in path %s", p)
+		return nil, errors.NewNotFound(asPathErr(err, r.path), "Could not find metadata in path %s", p)
 	}
 	m := new(processing.Metadata)
 	if err = decodeFn(raw, m); err != nil {
@@ -464,7 +464,7 @@ func (r *repo) SaveMetadata(m processing.Metadata, iri vocab.IRI) error {
 func (r *repo) LoadKey(iri vocab.IRI) (crypto.PrivateKey, error) {
 	m, err := r.LoadMetadata(iri)
 	if err != nil {
-		return nil, r.asPathErr(err)
+		return nil, asPathErr(err, r.path)
 	}
 
 	b, _ := pem.Decode(m.PrivateKey)
@@ -678,13 +678,13 @@ func createCollectionInPath(r *repo, it vocab.Item) (vocab.Item, error) {
 
 	colObject, err := r.loadItem(getObjectKey(itPath), it.GetLink())
 	if colObject == nil {
-		colObject, err = createCollection(r, it.GetLink())
+		it, err = createCollection(r, it.GetLink())
 	}
 	if err != nil {
 		return nil, errors.Annotatef(err, "saving collection object is not done")
 	}
 
-	return it.GetLink(), r.asPathErr(mkDirIfNotExists(itPath))
+	return it, asPathErr(mkDirIfNotExists(itPath), r.path)
 }
 
 func deleteCollectionFromPath(r repo, it vocab.Item) error {
@@ -694,7 +694,7 @@ func deleteCollectionFromPath(r repo, it vocab.Item) error {
 	itPath := r.itemStoragePath(it.GetLink())
 	if fi, err := os.Stat(itPath); err != nil {
 		if !os.IsNotExist(err) {
-			return errors.NewNotFound(r.asPathErr(err), "not found")
+			return errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
 	} else if fi.IsDir() {
 		return os.Remove(itPath)
@@ -785,7 +785,8 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	objPath := getObjectKey(itPath)
 	f, err := os.OpenFile(objPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		return it, errors.NewNotFound(err, "%s not found", objPath)
+		r.errFn("%s not found", objPath)
+		return it, errors.NewNotFound(asPathErr(err, r.path), "not found")
 	}
 	defer f.Close()
 	wrote, err := f.Write(entryBytes)
@@ -931,9 +932,12 @@ func loadFilteredPropsForIntransitiveActivity(r repo, f Filterable) func(a *voca
 	}
 }
 
-func (r repo) asPathErr(err error) error {
+func asPathErr(err error, prefix string) error {
+	if err == nil {
+		return nil
+	}
 	if perr, ok := err.(*fs.PathError); ok {
-		p := strings.TrimPrefix(perr.Path, r.path)
+		p := strings.TrimPrefix(perr.Path, prefix)
 		p = strings.TrimSuffix(p, objectKey)
 		p = strings.TrimSuffix(p, metaDataKey)
 		perr.Path = strings.Trim(p, "/")
@@ -991,14 +995,14 @@ func (r repo) loadItem(p string, f Filterable) (vocab.Item, error) {
 			if os.IsNotExist(err) {
 				return getOriginalIRI(p)
 			}
-			return nil, r.asPathErr(err)
+			return nil, asPathErr(err, r.path)
 		}
 		if raw == nil {
 			return nil, nil
 		}
 		it, err = loadFromRaw(raw)
 		if err != nil {
-			return nil, r.asPathErr(err)
+			return nil, asPathErr(err, r.path)
 		}
 		if vocab.IsNil(it) {
 			return nil, errors.NotFoundf("not found")
@@ -1070,7 +1074,7 @@ func (r repo) loadFromPath(f Filterable) (vocab.Item, error) {
 			err = filepath.Walk(itPath, func(p string, info os.FileInfo, err error) error {
 				if err != nil && os.IsNotExist(err) {
 					if isStorageCollectionKey(p) {
-						return errors.NewNotFound(r.asPathErr(err), "not found")
+						return errors.NewNotFound(asPathErr(err, r.path), "not found")
 					}
 					r.errFn("Error when loading path %s: %s", p, err)
 					return nil
@@ -1103,7 +1107,7 @@ func (r repo) loadFromPath(f Filterable) (vocab.Item, error) {
 		it, err := r.loadItem(getObjectKey(itPath), f)
 		if err != nil {
 			r.errFn("unable to load %s: %s", f.GetLink(), err.Error())
-			return nil, errors.NewNotFound(err, "not found")
+			return nil, errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
 		if !vocab.IsNil(it) {
 			return it, nil
