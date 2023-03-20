@@ -10,7 +10,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"math/rand"
 	"net/url"
 	"os"
@@ -216,9 +215,7 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 	if err != nil {
 		return err
 	}
-	if r.cache != nil {
-		r.cache.Remove(it.GetLink())
-	}
+	r.removeFromCache(it.GetLink())
 	return nil
 }
 
@@ -652,7 +649,7 @@ func isHiddenCollectionKey(p string) bool {
 	return filters.HiddenCollections.Contains(lst)
 }
 
-func (r repo) itemStoragePath(iri vocab.IRI) string {
+func (r *repo) itemStoragePath(iri vocab.IRI) string {
 	return filepath.Join(r.path, iriPath(iri))
 }
 
@@ -734,13 +731,11 @@ func deleteCollectionFromPath(r repo, it vocab.Item) error {
 	} else if fi.IsDir() {
 		return os.Remove(itPath)
 	}
-	if r.cache != nil {
-		r.cache.Remove(it.GetLink())
-	}
+	r.removeFromCache(it.GetLink())
 	return nil
 }
 
-func (r repo) removeFromCache(it Filterable) {
+func (r *repo) removeFromCache(it Filterable) {
 	if r.cache == nil || it == nil {
 		return
 	}
@@ -793,9 +788,7 @@ func deleteItem(r *repo, it vocab.Item) error {
 	if err := os.RemoveAll(itemPath); err != nil {
 		return err
 	}
-	if r.cache != nil {
-		r.cache.Remove(it.GetLink())
-	}
+	r.removeFromCache(it.GetLink())
 	return nil
 }
 
@@ -832,9 +825,7 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 		return it, errors.Annotatef(err, "failed writing object")
 	}
 
-	if r.cache != nil {
-		r.cache.Set(it.GetLink(), it)
-	}
+	r.setToCache(it)
 	return it, nil
 }
 
@@ -857,14 +848,12 @@ func onCollection(r *repo, col vocab.Item, it vocab.Item, fn func(p string) erro
 		}
 		return errors.Annotatef(err, "Unable to save entries to collection %s", itPath)
 	}
-	if r.cache != nil {
-		r.cache.Remove(col.GetLink())
-	}
+	r.removeFromCache(col.GetLink())
 	return nil
 }
 
 func loadRawFromPath(itPath string) ([]byte, error) {
-	return ioutil.ReadFile(itPath)
+	return os.ReadFile(itPath)
 }
 
 func loadFromRaw(raw []byte) (vocab.Item, error) {
@@ -875,7 +864,7 @@ func loadFromRaw(raw []byte) (vocab.Item, error) {
 	return decodeItemFn(raw)
 }
 
-func (r repo) loadOneFromPath(f Filterable) (vocab.Item, error) {
+func (r *repo) loadOneFromPath(f Filterable) (vocab.Item, error) {
 	col, err := r.loadFromPath(f)
 	if err != nil {
 		return nil, err
@@ -894,17 +883,7 @@ func (r repo) loadOneFromPath(f Filterable) (vocab.Item, error) {
 	return col, nil
 }
 
-func isSingleItem(f Filterable) bool {
-	if _, isIRI := f.(vocab.IRI); isIRI {
-		return true
-	}
-	if _, isItem := f.(vocab.Item); isItem {
-		return true
-	}
-	return false
-}
-
-func loadFilteredPropsForActor(r repo, f Filterable) func(a *vocab.Actor) error {
+func loadFilteredPropsForActor(r *repo, f Filterable) func(a *vocab.Actor) error {
 	return func(a *vocab.Actor) error {
 		return vocab.OnObject(a, loadFilteredPropsForObject(r, f))
 	}
@@ -912,7 +891,7 @@ func loadFilteredPropsForActor(r repo, f Filterable) func(a *vocab.Actor) error 
 
 var subFilterValidationError = errors.NotValidf("subfilter failed validation")
 
-func loadFilteredPropsForObject(r repo, f Filterable) func(o *vocab.Object) error {
+func loadFilteredPropsForObject(r *repo, f Filterable) func(o *vocab.Object) error {
 	return func(o *vocab.Object) error {
 		if len(o.Tag) == 0 {
 			return nil
@@ -931,7 +910,7 @@ func loadFilteredPropsForObject(r repo, f Filterable) func(o *vocab.Object) erro
 	}
 }
 
-func loadFilteredPropsForActivity(r repo, f Filterable) func(a *vocab.Activity) error {
+func loadFilteredPropsForActivity(r *repo, f Filterable) func(a *vocab.Activity) error {
 	return func(a *vocab.Activity) error {
 		if ok, fo := filters.FiltersOnActivityObject(f); ok && !vocab.IsNil(a.Object) && vocab.IsIRI(a.Object) {
 			if ob, err := r.loadOneFromPath(a.Object.GetLink()); err == nil {
@@ -945,7 +924,7 @@ func loadFilteredPropsForActivity(r repo, f Filterable) func(a *vocab.Activity) 
 	}
 }
 
-func loadFilteredPropsForIntransitiveActivity(r repo, f Filterable) func(a *vocab.IntransitiveActivity) error {
+func loadFilteredPropsForIntransitiveActivity(r *repo, f Filterable) func(a *vocab.IntransitiveActivity) error {
 	return func(a *vocab.IntransitiveActivity) error {
 		if ok, fa := filters.FiltersOnActivityActor(f); ok && !vocab.IsNil(a.Actor) && vocab.IsIRI(a.Actor) {
 			if act, err := r.loadOneFromPath(a.Actor.GetLink()); err == nil {
@@ -1014,19 +993,17 @@ func getOriginalIRI(p string) (vocab.Item, error) {
 	return vocab.IRI(u.String()), nil
 }
 
-func (r repo) loadFromCache(f Filterable) vocab.Item {
+func (r *repo) loadFromCache(f Filterable) vocab.Item {
 	if f == nil || r.cache == nil {
 		return nil
 	}
 	return r.cache.Get(f.GetLink())
 }
 
-func (r repo) loadItem(p string, f Filterable) (vocab.Item, error) {
+func (r *repo) loadItem(p string, f Filterable) (vocab.Item, error) {
 	var it vocab.Item
-	if r.cache != nil {
-		if cachedIt := r.cache.Get(f.GetLink()); cachedIt != nil {
-			it = cachedIt
-		}
+	if cachedIt := r.loadFromCache(f.GetLink()); cachedIt != nil {
+		it = cachedIt
 	}
 	if vocab.IsNil(it) {
 		raw, err := loadRawFromPath(p)
@@ -1080,23 +1057,21 @@ func (r repo) loadItem(p string, f Filterable) (vocab.Item, error) {
 		}
 	}
 
-	if r.cache != nil {
-		r.cache.Set(it.GetLink(), it)
-	}
+	r.setToCache(it)
 	if f != nil {
 		return filters.FilterIt(it, f)
 	}
 	return it, nil
 }
 
-func (r repo) setToCache(it vocab.Item) {
+func (r *repo) setToCache(it vocab.Item) {
 	if it == nil || r.cache == nil {
 		return
 	}
 	r.cache.Set(it.GetLink(), it)
 }
 
-func (r repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
+func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 	itPath := r.itemStoragePath(f.GetLink())
 	limitItems := -1
 	it, err := r.loadItem(getObjectKey(itPath), f)
@@ -1143,7 +1118,7 @@ func (r repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 	return it, err
 }
 
-func (r repo) loadFromPath(f Filterable) (vocab.Item, error) {
+func (r *repo) loadFromPath(f Filterable) (vocab.Item, error) {
 	var err error
 	var it vocab.Item
 

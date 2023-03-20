@@ -205,7 +205,7 @@ func (r *repo) loadClientFromPath(clientPath string) (osin.Client, error) {
 	return c, err
 }
 
-func (r repo) oauthPath(pieces ...string) string {
+func (r *repo) oauthPath(pieces ...string) string {
 	pieces = append([]string{r.path, folder}, pieces...)
 	return filepath.Join(pieces...)
 }
