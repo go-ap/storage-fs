@@ -140,7 +140,7 @@ func Test_repo_Load(t *testing.T) {
 		t.Errorf("%s", err)
 		return
 	}
-	t.Logf("mocks %#v", mocks)
+
 	tests := []struct {
 		name    string
 		fields  fields
@@ -156,13 +156,14 @@ func Test_repo_Load(t *testing.T) {
 			wantErr: error(unix.ENOENT),
 		},
 		{
-			name: "empty iri gives us the root",
+			name: "empty iri gives us not found",
 			fields: fields{
 				baseURL: "example.com",
 				path:    mocksPath,
 			},
-			args: "",
-			want: vocab.ItemCollection{vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"}},
+			args:    "",
+			want:    nil,
+			wantErr: errors.NotFoundf("file not found"),
 		},
 		{
 			name: "root iri gives us the root",
@@ -171,7 +172,7 @@ func Test_repo_Load(t *testing.T) {
 				path:    mocksPath,
 			},
 			args: "https://example.com",
-			want: vocab.ItemCollection{vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"}},
+			want: vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"},
 		},
 		{
 			name: "invalid iri gives 404",
@@ -180,7 +181,7 @@ func Test_repo_Load(t *testing.T) {
 				path:    mocksPath,
 			},
 			args:    "https://example.com/dsad",
-			want:    vocab.ItemCollection{},
+			want:    nil,
 			wantErr: os.ErrNotExist,
 		},
 	}
