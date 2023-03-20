@@ -59,7 +59,7 @@ func New(c Config) (*repo, error) {
 	if err := mkDirIfNotExists(p); err != nil {
 		return nil, err
 	}
-	cwd, _ := os.Getwd()
+	cwd, _ := getwd()
 	b := repo{
 		path:  p,
 		cwd:   cwd,
@@ -1054,4 +1054,13 @@ func (r repo) loadFromPath(f Filterable) (vocab.ItemCollection, error) {
 		}
 	}
 	return col, err
+}
+
+var testCWD = ""
+
+func getwd() (string, error) {
+	if testCWD != "" {
+		return testCWD, nil
+	}
+	return os.Getwd()
 }
