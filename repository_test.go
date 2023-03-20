@@ -1,7 +1,10 @@
 package fs
 
 import (
+	"io/fs"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	vocab "github.com/go-ap/activitypub"
@@ -16,8 +19,6 @@ type fields struct {
 	cwd     string
 	opened  bool
 	cache   cache.CanStore
-	logFn   loggerFn
-	errFn   loggerFn
 }
 
 func Test_New(t *testing.T) {
@@ -100,8 +101,8 @@ func Test_repo_Open(t *testing.T) {
 				cwd:     tt.fields.cwd,
 				opened:  tt.fields.opened,
 				cache:   tt.fields.cache,
-				logFn:   tt.fields.logFn,
-				errFn:   tt.fields.errFn,
+				logFn:   t.Logf,
+				errFn:   t.Logf,
 			}
 			if err := r.Open(); !errors.Is(err, tt.wantErr) {
 				t.Errorf("Open() error = %v, wantErr %v", err, tt.wantErr)
@@ -118,17 +119,28 @@ func Test_repo_Open(t *testing.T) {
 }
 
 func Test_repo_Load(t *testing.T) {
-	mocksPath, err := filepath.Abs("./mocks")
+	mocks := make(map[vocab.IRI]vocab.Item)
+	mocksPath := filepath.Join(testCWD, "mocks")
+	err := filepath.WalkDir(mocksPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if filepath.Base(path) == objectKey {
+			iri := vocab.IRI(strings.Replace(strings.Replace(path, mocksPath, "https:/", 1), objectKey, "", 1))
+			j, _ := os.ReadFile(path)
+			m, _ := vocab.UnmarshalJSON(j)
+			mocks[iri] = m
+		}
+		return nil
+	})
 	if err != nil {
 		t.Errorf("%s", err)
+		return
 	}
-	type fields struct {
-		baseURL string
-		path    string
-		cwd     string
-		opened  bool
-		cache   cache.CanStore
-	}
+	t.Logf("mocks %#v", mocks)
 	tests := []struct {
 		name    string
 		fields  fields
@@ -195,7 +207,6 @@ func Test_repo_Load(t *testing.T) {
 	}
 }
 
-
 func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
 	return &vocab.OrderedCollection{
 		ID:   id,
@@ -204,15 +215,6 @@ func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
 }
 
 func Test_repo_createCollection(t *testing.T) {
-	type fields struct {
-		baseURL string
-		path    string
-		cwd     string
-		opened  bool
-		cache   cache.CanStore
-		logFn   loggerFn
-		errFn   loggerFn
-	}
 	tests := []struct {
 		name     string
 		fields   fields
@@ -225,8 +227,6 @@ func Test_repo_createCollection(t *testing.T) {
 			fields: fields{
 				baseURL: "https://example.com",
 				opened:  false,
-				logFn:   t.Logf,
-				errFn:   t.Errorf,
 			},
 			iri:      "https://example.com/replies",
 			expected: expectedCol("https://example.com/replies"),
@@ -241,10 +241,10 @@ func Test_repo_createCollection(t *testing.T) {
 				cwd:     tt.fields.cwd,
 				opened:  tt.fields.opened,
 				cache:   cache.New(false),
-				logFn:   tt.fields.logFn,
-				errFn:   tt.fields.errFn,
+				logFn:   t.Logf,
+				errFn:   t.Logf,
 			}
-			col, err := r.createCollection(tt.iri)
+			col, err := createCollectionInPath(*r, tt.iri)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
 			}
