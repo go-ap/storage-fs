@@ -662,34 +662,18 @@ func createCollections(r *repo, it vocab.Item) error {
 	}
 	if vocab.ActorTypes.Contains(it.GetType()) {
 		vocab.OnActor(it, func(p *vocab.Actor) error {
-			if p.Inbox != nil {
-				p.Inbox, _ = createCollectionInPath(r, p.Inbox)
-			}
-			if p.Outbox != nil {
-				p.Outbox, _ = createCollectionInPath(r, p.Outbox)
-			}
-			if p.Followers != nil {
-				p.Followers, _ = createCollectionInPath(r, p.Followers)
-			}
-			if p.Following != nil {
-				p.Following, _ = createCollectionInPath(r, p.Following)
-			}
-			if p.Liked != nil {
-				p.Liked, _ = createCollectionInPath(r, p.Liked)
-			}
+			p.Inbox, _ = createCollectionInPath(r, p.Inbox)
+			p.Outbox, _ = createCollectionInPath(r, p.Outbox)
+			p.Followers, _ = createCollectionInPath(r, p.Followers)
+			p.Following, _ = createCollectionInPath(r, p.Following)
+			p.Liked, _ = createCollectionInPath(r, p.Liked)
 			return nil
 		})
 	}
 	return vocab.OnObject(it, func(o *vocab.Object) error {
-		if o.Replies != nil {
-			o.Replies, _ = createCollectionInPath(r, o.Replies)
-		}
-		if o.Likes != nil {
-			o.Likes, _ = createCollectionInPath(r, o.Likes)
-		}
-		if o.Shares != nil {
-			o.Shares, _ = createCollectionInPath(r, o.Shares)
-		}
+		o.Replies, _ = createCollectionInPath(r, o.Replies)
+		o.Likes, _ = createCollectionInPath(r, o.Likes)
+		o.Shares, _ = createCollectionInPath(r, o.Shares)
 		return nil
 	})
 }
@@ -708,6 +692,9 @@ func getObjectKey(p string) string {
 }
 
 func createCollectionInPath(r *repo, it vocab.Item) (vocab.Item, error) {
+	if vocab.IsNil(it) {
+		return nil, nil
+	}
 	itPath := r.itemStoragePath(it.GetLink())
 
 	colObject, err := r.loadItem(getObjectKey(itPath), it.GetLink())
@@ -718,7 +705,7 @@ func createCollectionInPath(r *repo, it vocab.Item) (vocab.Item, error) {
 		return nil, errors.Annotatef(err, "saving collection object is not done")
 	}
 
-	return it, asPathErr(mkDirIfNotExists(itPath), r.path)
+	return it.GetLink(), asPathErr(mkDirIfNotExists(itPath), r.path)
 }
 
 func deleteCollectionFromPath(r repo, it vocab.Item) error {
