@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
@@ -272,8 +273,9 @@ func saveCollection(r *repo, col vocab.CollectionInterface) (vocab.CollectionInt
 
 func createCollection(r *repo, colIRI vocab.IRI) (vocab.CollectionInterface, error) {
 	col := vocab.OrderedCollection{
-		ID:   colIRI,
-		Type: vocab.OrderedCollectionType,
+		ID:        colIRI,
+		Type:      vocab.OrderedCollectionType,
+		Published: time.Now().UTC(),
 	}
 	return saveCollection(r, &col)
 }
