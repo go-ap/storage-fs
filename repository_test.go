@@ -249,8 +249,7 @@ func Test_repo_createCollection(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
 			}
-
-			if !vocab.ItemsEqual(col, tt.expected) {
+			if !vocab.ItemsEqual(col, tt.expected.GetLink()) {
 				t.Errorf("Returned collection is not equal to expected %v: %v", tt.expected, col)
 			}
 			saved, err := r.Load(tt.iri)
