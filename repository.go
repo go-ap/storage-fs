@@ -997,7 +997,7 @@ func (r *repo) loadItem(p string, f Filterable) (vocab.Item, error) {
 	if vocab.IsNil(it) {
 		raw, err := loadRawFromPath(p)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if os.IsNotExist(err) && !isStorageCollectionKey(filepath.Dir(p)) {
 				return getOriginalIRI(p)
 			}
 			return nil, asPathErr(err, r.path)
@@ -1064,7 +1064,7 @@ func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 	itPath := r.itemStoragePath(f.GetLink())
 	limitItems := -1
 	it, err := r.loadItem(getObjectKey(itPath), f)
-	if err != nil {
+	if err != nil || vocab.IsNil(it) {
 		if !isHiddenCollectionKey(itPath) {
 			r.errFn("unable to load collection object for %s: %s", f.GetLink(), err.Error())
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "unable to load collection")
