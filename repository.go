@@ -1075,7 +1075,7 @@ func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 		// NOTE(marius): this creates blocked/ignored collections if they don't exist as dumb folders
 		mkDirIfNotExists(itPath)
 	}
-	err = vocab.OnCollectionIntf(it, func(col vocab.CollectionInterface) error {
+	err = vocab.OnOrderedCollection(it, func(col *vocab.OrderedCollection) error {
 		return filepath.Walk(itPath, func(p string, info os.FileInfo, err error) error {
 			if err != nil && os.IsNotExist(err) {
 				if isStorageCollectionKey(p) {
@@ -1096,10 +1096,11 @@ func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 			}
 			ob, err := r.loadItem(getObjectKey(p), f)
 			if err != nil {
-				r.errFn("unable to load %s: %s", p, err.Error())
+				r.logFn("unable to load %s: %s", p, err.Error())
+				return nil
 			}
 			if !vocab.IsNil(ob) {
-				col.Append(ob)
+				col.OrderedItems = append(col.OrderedItems, ob)
 				if limitItems > 0 && col.Count() >= uint(limitItems) {
 					return skipAll
 				}
