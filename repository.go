@@ -1063,6 +1063,9 @@ func (r *repo) setToCache(it vocab.Item) {
 func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 	itPath := r.itemStoragePath(f.GetLink())
 	limitItems := -1
+	if ff, ok := f.(*filters.Filters); ok {
+		limitItems = ff.MaxItems
+	}
 	it, err := r.loadItem(getObjectKey(itPath), f)
 	if err != nil || vocab.IsNil(it) {
 		if !isHiddenCollectionKey(itPath) {
