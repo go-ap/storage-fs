@@ -1062,51 +1062,50 @@ func (r *repo) setToCache(it vocab.Item) {
 
 func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 	itPath := r.itemStoragePath(f.GetLink())
-	limitItems := -1
-	if ff, ok := f.(*filters.Filters); ok {
-		limitItems = ff.MaxItems
-	}
 	it, err := r.loadItem(getObjectKey(itPath), f)
 	if err != nil || vocab.IsNil(it) {
 		if !isHiddenCollectionKey(itPath) {
-			r.errFn("unable to load collection object for %s: %s", f.GetLink(), err.Error())
+			r.logFn("unable to load collection object for %s: %s", f.GetLink(), err.Error())
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "unable to load collection")
 		}
 		// NOTE(marius): this creates blocked/ignored collections if they don't exist as dumb folders
 		mkDirIfNotExists(itPath)
 	}
-	err = vocab.OnOrderedCollection(it, func(col *vocab.OrderedCollection) error {
-		return filepath.Walk(itPath, func(p string, info os.FileInfo, err error) error {
-			if err != nil && os.IsNotExist(err) {
-				if isStorageCollectionKey(p) {
-					return errors.NewNotFound(asPathErr(err, r.path), "not found")
-				}
-				r.errFn("Error when loading path %s: %s", p, err)
-				return nil
-			}
-			dirPath, _ := path.Split(p)
-			dir := strings.TrimRight(dirPath, "/")
-			if dir != itPath || filepath.Base(p) == objectKey {
-				return nil
-			}
-			if _, ok := f.(vocab.IRI); ok {
-				// when loading a collection by path, we want to avoid filtering out IRIs that don't specifically
-				// contain the path, so we set the filter to a nil value
-				f = nil
-			}
-			ob, err := r.loadItem(getObjectKey(p), f)
-			if err != nil {
-				r.logFn("unable to load %s: %s", p, err.Error())
-				return nil
-			}
-			if !vocab.IsNil(ob) {
-				col.OrderedItems = append(col.OrderedItems, ob)
-				if limitItems > 0 && col.Count() >= uint(limitItems) {
-					return skipAll
-				}
+	items := make(vocab.ItemCollection, 0)
+	filepath.Walk(itPath, func(p string, info os.FileInfo, err error) error {
+		if err != nil && os.IsNotExist(err) {
+			if isStorageCollectionKey(p) {
+				return errors.NewNotFound(asPathErr(err, r.path), "not found")
 			}
 			return nil
-		})
+		}
+		dirPath, _ := path.Split(p)
+		dir := strings.TrimRight(dirPath, "/")
+		if dir != itPath || filepath.Base(p) == objectKey {
+			return nil
+		}
+		if _, ok := f.(vocab.IRI); ok {
+			// when loading a collection by path, we want to avoid filtering out IRIs that don't specifically
+			// contain the path, so we set the filter to a nil value
+			f = nil
+		}
+		ob, err := r.loadItem(getObjectKey(p), f)
+		if err != nil {
+			r.logFn("unable to load %s: %s", p, err.Error())
+			return nil
+		}
+		if !vocab.IsNil(ob) {
+			items = append(items, ob)
+		}
+		return nil
+	})
+
+	err = vocab.OnOrderedCollection(it, func(col *vocab.OrderedCollection) error {
+		col.OrderedItems = items
+		if col.TotalItems == 0 {
+			col.TotalItems = uint(len(items))
+		}
+		return nil
 	})
 	return it, err
 }
