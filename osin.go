@@ -491,6 +491,15 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 				return nil
 			}
 		}
+		if access.Client != "" {
+			data, err := r.loadClientFromPath(r.oauthPath(clientsBucket, access.Client))
+			if err != nil {
+				err := errors.Annotatef(err, "Unable to load client data for current access token %s.", access.AccessToken)
+				r.errFn("Authorize code %s: %s", access.AccessToken, err)
+				return nil
+			}
+			result.Client = data
+		}
 		return nil
 	})
 	return result, err
@@ -514,7 +523,7 @@ func (r *repo) LoadAccess(code string) (*osin.AccessData, error) {
 func (r *repo) RemoveAccess(code string) error {
 	err := r.Open()
 	if err != nil {
-		return errors.Annotatef(err, "Unable to open fs *repositoryage")
+		return errors.Annotatef(err, "Unable to open fs *repository")
 	}
 	defer r.Close()
 	return os.RemoveAll(r.oauthPath(accessBucket, code))
@@ -525,14 +534,25 @@ func (r *repo) LoadRefresh(code string) (*osin.AccessData, error) {
 	if code == "" {
 		return nil, errors.NotFoundf("Empty refresh code")
 	}
-	return nil, nil
+
+	refresh := ref{}
+	_, err := r.loadFromOauthPath(r.oauthPath(refreshBucket, code), func(raw []byte) error {
+		if err := decodeFn(raw, &refresh); err != nil {
+			return errors.Annotatef(err, "Unable to unmarshal refresh object")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.loadAccessFromPath(r.oauthPath(accessBucket, refresh.Access))
 }
 
 // RemoveRefresh revokes or deletes refresh AccessData.
 func (r *repo) RemoveRefresh(code string) error {
 	err := r.Open()
 	if err != nil {
-		return errors.Annotatef(err, "Unable to open fs *repositoryage")
+		return errors.Annotatef(err, "Unable to open fs *repository")
 	}
 	defer r.Close()
 	return os.RemoveAll(r.oauthPath(refreshBucket, code))
