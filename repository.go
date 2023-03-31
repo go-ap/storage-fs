@@ -899,15 +899,38 @@ func loadFilteredPropsForObject(r *repo, f Filterable) func(o *vocab.Object) err
 	}
 }
 
+func dereferenceItemAndFilter(r *repo, f Filterable, ob vocab.Item) (vocab.Item, error) {
+	if vocab.IsNil(ob) {
+		return ob, nil
+	}
+	if vocab.IsIRI(ob) {
+		o, err := r.loadOneFromPath(ob.GetLink())
+		if err != nil {
+			return ob, nil
+		}
+		if o != nil {
+			ob = o
+		}
+	}
+	if f != nil {
+		o, err := filters.FilterIt(ob, f)
+		if err != nil {
+			return ob, err
+		}
+		if o == nil {
+			return ob, subFilterValidationError
+		}
+		ob = o
+	}
+	return ob, nil
+}
+
 func loadFilteredPropsForActivity(r *repo, f Filterable) func(a *vocab.Activity) error {
 	return func(a *vocab.Activity) error {
-		if ok, fo := filters.FiltersOnActivityObject(f); ok && !vocab.IsNil(a.Object) && vocab.IsIRI(a.Object) {
-			if ob, err := r.loadOneFromPath(a.Object.GetLink()); err == nil {
-				a.Object, _ = filters.FilterIt(ob, fo)
-			}
-			if a.Object == nil {
-				return subFilterValidationError
-			}
+		var err error
+		_, fo := filters.FiltersOnActivityObject(f)
+		if a.Object, err = dereferenceItemAndFilter(r, fo, a.Object); err != nil {
+			return err
 		}
 		return vocab.OnIntransitiveActivity(a, loadFilteredPropsForIntransitiveActivity(r, f))
 	}
@@ -915,21 +938,14 @@ func loadFilteredPropsForActivity(r *repo, f Filterable) func(a *vocab.Activity)
 
 func loadFilteredPropsForIntransitiveActivity(r *repo, f Filterable) func(a *vocab.IntransitiveActivity) error {
 	return func(a *vocab.IntransitiveActivity) error {
-		if ok, fa := filters.FiltersOnActivityActor(f); ok && !vocab.IsNil(a.Actor) && vocab.IsIRI(a.Actor) {
-			if act, err := r.loadOneFromPath(a.Actor.GetLink()); err == nil {
-				a.Actor, _ = filters.FilterIt(act, fa)
-			}
-			if a.Actor == nil {
-				return subFilterValidationError
-			}
+		var err error
+		_, fa := filters.FiltersOnActivityActor(f)
+		if a.Actor, err = dereferenceItemAndFilter(r, fa, a.Actor); err != nil {
+			return err
 		}
-		if ok, ft := filters.FiltersOnActivityTarget(f); ok && !vocab.IsNil(a.Target) && vocab.IsIRI(a.Target) {
-			if t, err := r.loadOneFromPath(a.Target.GetLink()); err == nil {
-				a.Target, _ = filters.FilterIt(t, ft)
-			}
-			if a.Target == nil {
-				return subFilterValidationError
-			}
+		_, ft := filters.FiltersOnActivityTarget(f)
+		if a.Target, err = dereferenceItemAndFilter(r, ft, a.Target); err != nil {
+			return err
 		}
 		return vocab.OnObject(a, loadFilteredPropsForObject(r, f))
 	}
