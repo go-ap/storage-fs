@@ -781,6 +781,19 @@ func deleteItem(r *repo, it vocab.Item) error {
 	return nil
 }
 
+type multiErr []error
+
+func (e multiErr) Error() string {
+	s := strings.Builder{}
+	for i, err := range e {
+		s.WriteString(err.Error())
+		if i < len(e)-1 {
+			s.WriteString(": ")
+		}
+	}
+	return s.String()
+}
+
 func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	itPath := r.itemStoragePath(it.GetLink())
 	mkDirIfNotExists(itPath)
@@ -788,34 +801,56 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	if err := createCollections(r, it); err != nil {
 		return it, errors.Annotatef(err, "could not create object's collections")
 	}
-	// TODO(marius): it's possible to set the encoding/decoding functions on the package or storage object level
-	//  instead of using jsonld.(Un)Marshal like this.
-	entryBytes, err := encodeItemFn(it)
-	if err != nil {
-		return it, errors.Annotatef(err, "could not marshal object")
+	writeSingleObjFn := func(it vocab.Item) (vocab.Item, error) {
+		// TODO(marius): it's possible to set the encoding/decoding functions on the package or storage object level
+		//  instead of using jsonld.(Un)Marshal like this.
+		entryBytes, err := encodeItemFn(it)
+		if err != nil {
+			return it, errors.Annotatef(err, "could not marshal object")
+		}
+
+		if err := mkDirIfNotExists(itPath); err != nil {
+			r.errFn("unable to create path: %s, %s", itPath, err)
+			return it, errors.Annotatef(err, "could not create file")
+		}
+		objPath := getObjectKey(itPath)
+		f, err := os.OpenFile(objPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		if err != nil {
+			r.errFn("%s not found", objPath)
+			return it, errors.NewNotFound(asPathErr(err, r.path), "not found")
+		}
+		defer f.Close()
+		wrote, err := f.Write(entryBytes)
+		if err != nil {
+			return it, errors.Annotatef(err, "could not store encoded object")
+		}
+		if wrote != len(entryBytes) {
+			return it, errors.Annotatef(err, "failed writing object")
+		}
+
+		r.setToCache(it)
+		return it, nil
 	}
 
-	if err := mkDirIfNotExists(itPath); err != nil {
-		r.errFn("unable to create path: %s, %s", itPath, err)
-		return it, errors.Annotatef(err, "could not create file")
+	if vocab.IsItemCollection(it) {
+		err := vocab.OnItemCollection(it, func(col *vocab.ItemCollection) error {
+			m := make(multiErr, 0)
+			for i, ob := range *col {
+				saved, err := writeSingleObjFn(ob)
+				if err == nil {
+					(*col)[i] = saved
+				} else {
+					m = append(m, err)
+				}
+			}
+			if len(m) > 0 {
+				return m
+			}
+			return nil
+		})
+		return it, err
 	}
-	objPath := getObjectKey(itPath)
-	f, err := os.OpenFile(objPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		r.errFn("%s not found", objPath)
-		return it, errors.NewNotFound(asPathErr(err, r.path), "not found")
-	}
-	defer f.Close()
-	wrote, err := f.Write(entryBytes)
-	if err != nil {
-		return it, errors.Annotatef(err, "could not store encoded object")
-	}
-	if wrote != len(entryBytes) {
-		return it, errors.Annotatef(err, "failed writing object")
-	}
-
-	r.setToCache(it)
-	return it, nil
+	return writeSingleObjFn(it)
 }
 
 func onCollection(r *repo, col vocab.Item, it vocab.Item, fn func(p string) error) error {
