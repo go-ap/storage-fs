@@ -913,7 +913,7 @@ func loadFilteredPropsForActor(r *repo, f Filterable) func(a *vocab.Actor) error
 	}
 }
 
-var subFilterValidationError = errors.NotValidf("subfilter failed validation")
+var subFilterValidationError = errors.NotValidf("Sub-filter failed validation")
 
 func loadFilteredPropsForObject(r *repo, f Filterable) func(o *vocab.Object) error {
 	return func(o *vocab.Object) error {
@@ -938,8 +938,9 @@ func dereferenceItemAndFilter(r *repo, f Filterable, ob vocab.Item) (vocab.Item,
 	if vocab.IsNil(ob) {
 		return ob, nil
 	}
+
 	if vocab.IsIRI(ob) {
-		o, err := r.loadOneFromPath(ob.GetLink())
+		o, err := r.Load(ob.GetLink())
 		if err != nil {
 			return ob, nil
 		}
@@ -964,6 +965,10 @@ func loadFilteredPropsForActivity(r *repo, f Filterable) func(a *vocab.Activity)
 	return func(a *vocab.Activity) error {
 		var err error
 		_, fo := filters.FiltersOnActivityObject(f)
+		if !vocab.IsNil(a.Object) && a.ID.Equals(a.Object.GetLink(), true) {
+			r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
+			return errors.BadGatewayf("invalid activity with id %s, referencing itself as an object: %s", a.ID, a.Object.GetLink())
+		}
 		if a.Object, err = dereferenceItemAndFilter(r, fo, a.Object); err != nil {
 			return err
 		}
@@ -975,10 +980,18 @@ func loadFilteredPropsForIntransitiveActivity(r *repo, f Filterable) func(a *voc
 	return func(a *vocab.IntransitiveActivity) error {
 		var err error
 		_, fa := filters.FiltersOnActivityActor(f)
+		if !vocab.IsNil(a.Actor) && a.ID.Equals(a.Actor.GetLink(), true) {
+			r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
+			return errors.BadGatewayf("invalid activity with id %s, referencing itself as an actor: %s", a.ID, a.Actor.GetLink())
+		}
 		if a.Actor, err = dereferenceItemAndFilter(r, fa, a.Actor); err != nil {
 			return err
 		}
 		_, ft := filters.FiltersOnActivityTarget(f)
+		if !vocab.IsNil(a.Target) && a.ID.Equals(a.Target.GetLink(), true) {
+			r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original object. (%s)", a.Type, a.ID)
+			return errors.BadGatewayf("invalid activity with id %s, referencing itself as a target: %s", a.ID, a.Target.GetLink())
+		}
 		if a.Target, err = dereferenceItemAndFilter(r, ft, a.Target); err != nil {
 			return err
 		}
