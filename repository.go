@@ -527,9 +527,11 @@ func (r *repo) SaveKey(iri vocab.IRI, key crypto.PrivateKey) (vocab.Item, error)
 	if err != nil && !errors.IsNotFound(err) {
 		return ob, err
 	}
-	if m.PrivateKey != nil {
+	if m != nil && m.PrivateKey != nil {
 		r.logFn("actor %s already has a private key", iri)
 	}
+
+	m = new(processing.Metadata)
 	prvEnc, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		r.errFn("unable to x509.MarshalPKCS8PrivateKey() the private key %T for %s", key, iri)
@@ -795,13 +797,13 @@ func (e multiErr) Error() string {
 }
 
 func save(r *repo, it vocab.Item) (vocab.Item, error) {
-	itPath := r.itemStoragePath(it.GetLink())
-	mkDirIfNotExists(itPath)
-
 	if err := createCollections(r, it); err != nil {
 		return it, errors.Annotatef(err, "could not create object's collections")
 	}
 	writeSingleObjFn := func(it vocab.Item) (vocab.Item, error) {
+		itPath := r.itemStoragePath(it.GetLink())
+		mkDirIfNotExists(itPath)
+
 		// TODO(marius): it's possible to set the encoding/decoding functions on the package or storage object level
 		//  instead of using jsonld.(Un)Marshal like this.
 		entryBytes, err := encodeItemFn(it)
