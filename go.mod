@@ -5,8 +5,8 @@ go 1.19
 require (
 	github.com/go-ap/activitypub v0.0.0-20230514141345-45936cc2f768
 	github.com/go-ap/errors v0.0.0-20221205040414-01c1adfc98ea
-	github.com/go-ap/filters v0.0.0-20230514151440-04a9ef75e199
-	github.com/go-ap/processing v0.0.0-20230514143008-e4fefa491f6a
+	github.com/go-ap/filters v0.0.0-20230611142751-c49e8b41faef
+	github.com/go-ap/processing v0.0.0-20230611142403-7b8178f496f9
 	github.com/openshift/osin v1.0.1
 	golang.org/x/crypto v0.9.0
 	golang.org/x/sys v0.8.0
@@ -22,7 +22,7 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/mariusor/qstring v0.0.0-20200204164351-5a99d46de39d // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.18 // indirect
+	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/rs/zerolog v1.29.1 // indirect
