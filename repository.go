@@ -1057,8 +1057,10 @@ func (r *repo) loadFromCache(f Filterable) vocab.Item {
 
 func (r *repo) loadItem(p string, f Filterable) (vocab.Item, error) {
 	var it vocab.Item
-	if cachedIt := r.loadFromCache(f.GetLink()); cachedIt != nil {
-		it = cachedIt
+	if f != nil {
+		if cachedIt := r.loadFromCache(f.GetLink()); cachedIt != nil {
+			it = cachedIt
+		}
 	}
 	if vocab.IsNil(it) {
 		raw, err := loadRawFromPath(p)
@@ -1126,6 +1128,18 @@ func (r *repo) setToCache(it vocab.Item) {
 	r.cache.Set(it.GetLink(), it)
 }
 
+func iriFromObjectPath(p string, r *repo) vocab.IRI {
+	p = strings.Replace(p, r.path, "", -1)
+	p = strings.Replace(p, filepath.Join("/", objectKey), "", -1)
+	if !strings.Contains(p, "%2F") {
+		return vocab.IRI("https:/" + p)
+	}
+	// the path contains encoded "/" characters, which means is a symlink to another folder
+	_, p = filepath.Split(p)
+	p, _ = url.PathUnescape(p)
+	return vocab.IRI("https://" + p)
+}
+
 func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 	itPath := r.itemStoragePath(f.GetLink())
 	it, err := r.loadItem(getObjectKey(itPath), f)
@@ -1150,10 +1164,10 @@ func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 		if dir != itPath || filepath.Base(p) == objectKey {
 			return nil
 		}
-		if _, ok := f.(vocab.IRI); ok {
-			// when loading a collection by path, we want to avoid filtering out IRIs that don't specifically
-			// contain the path, so we set the filter to a nil value
-			f = nil
+		if isStorageCollectionKey(itPath) {
+			if ff, ok := f.(*filters.Filters); ok {
+				ff.IRI = iriFromObjectPath(p, r)
+			}
 		}
 		ob, err := r.loadItem(getObjectKey(p), f)
 		if err != nil {
