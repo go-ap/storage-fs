@@ -904,6 +904,10 @@ func (r *repo) loadOneFromPath(f Filterable) (vocab.Item, error) {
 			result = col.Collection().First()
 			return nil
 		})
+		if vocab.IsIRI(result) && result.GetLink().Equals(f.GetLink(), false) {
+			// NOTE(marius): basically we ended up with the same iri
+			return nil, errors.NotFoundf("nothing found")
+		}
 		return result, nil
 	}
 	return col, nil
@@ -1204,6 +1208,9 @@ func (r *repo) loadFromPath(f Filterable) (vocab.Item, error) {
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
 		if vocab.IsNil(it) {
+			return nil, errors.NewNotFound(asPathErr(err, r.path), "not found")
+		}
+		if vocab.IsIRI(it) {
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
 	}
