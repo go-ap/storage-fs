@@ -1045,6 +1045,14 @@ func getOriginalIRI(p string) (vocab.Item, error) {
 	}
 	upath := ""
 	host := pieces[0]
+	// NOTE(marius): this heuristic of trying to see if the path we received is of type activities/UUID
+	// is not very good and it might lead to problems down the line.
+	// Currently it prevents returning invalid IRIs when an item in an inbox points to a valid folder in /activities,
+	// but there is no __raw document there. The result before this fix was an IRI of type https://activities/UUID
+	if filters.FedBOXCollections.Contains(vocab.CollectionPath(host)) {
+		// directory is local, but has no __raw file
+		return nil, errors.NotFoundf("invalid path %s", p)
+	}
 	if len(pieces) > 1 {
 		upath = path.Join(pieces[1:]...)
 	}
