@@ -451,7 +451,8 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*processing.Metadata, error) {
 	p := r.itemStoragePath(iri)
 	raw, err := loadRawFromPath(getMetadataKey(p))
 	if err != nil {
-		return nil, errors.NewNotFound(asPathErr(err, r.path), "Could not find metadata in path %s", p)
+		err = errors.NewNotFound(asPathErr(err, r.path), "Could not find metadata in path %s", sanitizePath(p, r.path))
+		return nil, err
 	}
 	m := new(processing.Metadata)
 	if err = decodeFn(raw, m); err != nil {
@@ -1164,7 +1165,7 @@ func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 		mkDirIfNotExists(itPath)
 	}
 	items := make(vocab.ItemCollection, 0)
-	filepath.Walk(itPath, func(p string, info os.FileInfo, err error) error {
+	err = filepath.WalkDir(itPath, func(p string, info os.DirEntry, err error) error {
 		if err != nil && os.IsNotExist(err) {
 			if isStorageCollectionKey(p) {
 				return errors.NewNotFound(asPathErr(err, r.path), "not found")
@@ -1191,6 +1192,10 @@ func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 		}
 		return nil
 	})
+	if err != nil {
+		r.errFn("unable to load from fs: %s", err.Error())
+		return it, err
+	}
 
 	err = vocab.OnOrderedCollection(it, func(col *vocab.OrderedCollection) error {
 		col.OrderedItems = items
