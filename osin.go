@@ -129,7 +129,7 @@ func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) (ui
 	var err error
 	var cnt uint = 0
 	if isOauthStorageCollectionKey(itPath) {
-		err = filepath.Walk(itPath, func(p string, info os.FileInfo, err error) error {
+		err = filepath.WalkDir(itPath, func(p string, info os.DirEntry, err error) error {
 			if err != nil && os.IsNotExist(err) {
 				return errors.NotFoundf("%s not found", sanitizePath(p, r.path))
 			}
