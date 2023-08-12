@@ -14,11 +14,10 @@ import (
 )
 
 type fields struct {
-	baseURL string
-	path    string
-	cwd     string
-	opened  bool
-	cache   cache.CanStore
+	path   string
+	cwd    string
+	opened bool
+	cache  cache.CanStore
 }
 
 func Test_New(t *testing.T) {
@@ -96,13 +95,12 @@ func Test_repo_Open(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &repo{
-				baseURL: tt.fields.baseURL,
-				path:    tt.fields.path,
-				cwd:     tt.fields.cwd,
-				opened:  tt.fields.opened,
-				cache:   tt.fields.cache,
-				logFn:   t.Logf,
-				errFn:   t.Logf,
+				path:   tt.fields.path,
+				cwd:    tt.fields.cwd,
+				opened: tt.fields.opened,
+				cache:  tt.fields.cache,
+				logFn:  t.Logf,
+				errFn:  t.Logf,
 			}
 			if err := r.Open(); !errors.Is(err, tt.wantErr) {
 				t.Errorf("Open() error = %v, wantErr %v", err, tt.wantErr)
@@ -158,8 +156,7 @@ func Test_repo_Load(t *testing.T) {
 		{
 			name: "empty iri gives us not found",
 			fields: fields{
-				baseURL: "example.com",
-				path:    mocksPath,
+				path: mocksPath,
 			},
 			args:    "",
 			want:    nil,
@@ -168,8 +165,7 @@ func Test_repo_Load(t *testing.T) {
 		{
 			name: "root iri gives us the root",
 			fields: fields{
-				baseURL: "example.com",
-				path:    mocksPath,
+				path: mocksPath,
 			},
 			args: "https://example.com",
 			want: vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"},
@@ -177,8 +173,7 @@ func Test_repo_Load(t *testing.T) {
 		{
 			name: "invalid iri gives 404",
 			fields: fields{
-				baseURL: "example.com",
-				path:    mocksPath,
+				path: mocksPath,
 			},
 			args:    "https://example.com/dsad",
 			want:    nil,
@@ -188,13 +183,12 @@ func Test_repo_Load(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &repo{
-				baseURL: tt.fields.baseURL,
-				path:    tt.fields.path,
-				cwd:     tt.fields.cwd,
-				opened:  tt.fields.opened,
-				cache:   tt.fields.cache,
-				logFn:   t.Logf,
-				errFn:   t.Logf,
+				path:   tt.fields.path,
+				cwd:    tt.fields.cwd,
+				opened: tt.fields.opened,
+				cache:  tt.fields.cache,
+				logFn:  t.Logf,
+				errFn:  t.Logf,
 			}
 			got, err := r.Load(tt.args)
 			if !errors.Is(err, tt.wantErr) {
@@ -226,8 +220,7 @@ func Test_repo_createCollection(t *testing.T) {
 		{
 			name: "example.com/replies",
 			fields: fields{
-				baseURL: "https://example.com",
-				opened:  false,
+				opened: false,
 			},
 			iri:      "https://example.com/replies",
 			expected: expectedCol("https://example.com/replies"),
@@ -237,13 +230,12 @@ func Test_repo_createCollection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &repo{
-				baseURL: tt.fields.baseURL,
-				path:    t.TempDir(),
-				cwd:     tt.fields.cwd,
-				opened:  tt.fields.opened,
-				cache:   cache.New(false),
-				logFn:   t.Logf,
-				errFn:   t.Logf,
+				path:   t.TempDir(),
+				cwd:    tt.fields.cwd,
+				opened: tt.fields.opened,
+				cache:  cache.New(false),
+				logFn:  t.Logf,
+				errFn:  t.Logf,
 			}
 			col, err := createCollectionInPath(r, tt.iri)
 			if (err != nil) != tt.wantErr {

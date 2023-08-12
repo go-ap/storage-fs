@@ -77,13 +77,12 @@ func New(c Config) (*repo, error) {
 }
 
 type repo struct {
-	baseURL string
-	path    string
-	cwd     string
-	opened  bool
-	cache   cache.CanStore
-	logFn   loggerFn
-	errFn   loggerFn
+	path   string
+	cwd    string
+	opened bool
+	cache  cache.CanStore
+	logFn  loggerFn
+	errFn  loggerFn
 }
 
 // Open
