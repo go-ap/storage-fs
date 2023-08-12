@@ -106,23 +106,6 @@ func (r *repo) Close() {
 	r.close()
 }
 
-func (r *repo) CreateService(service *vocab.Service) error {
-	err := r.Open()
-	defer r.Close()
-	if err != nil {
-		return err
-	}
-	if it, err := save(r, service); err == nil {
-		op := "Updated"
-		id := it.GetID()
-		if !id.IsValid() {
-			op = "Added new"
-		}
-		r.logFn("%s %s: %s", op, it.GetType(), it.GetLink())
-	}
-	return err
-}
-
 // Load
 func (r *repo) Load(i vocab.IRI) (vocab.Item, error) {
 	if err := r.Open(); err != nil {
