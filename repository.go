@@ -20,10 +20,10 @@ import (
 	"time"
 
 	vocab "github.com/go-ap/activitypub"
+	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
 	"github.com/go-ap/filters"
 	"github.com/go-ap/processing"
-	"github.com/go-ap/storage-fs/internal/cache"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -713,7 +713,7 @@ func (r *repo) removeFromCache(it Filterable) {
 	if r.cache == nil || it == nil {
 		return
 	}
-	r.cache.Remove(it.GetLink())
+	r.cache.Delete(it.GetLink())
 }
 
 // deleteCollections
@@ -1047,7 +1047,7 @@ func (r *repo) loadFromCache(f Filterable) vocab.Item {
 	if f == nil || r.cache == nil {
 		return nil
 	}
-	return r.cache.Get(f.GetLink())
+	return r.cache.Load(f.GetLink())
 }
 
 func (r *repo) loadItem(p string, f Filterable) (vocab.Item, error) {
@@ -1120,7 +1120,7 @@ func (r *repo) setToCache(it vocab.Item) {
 	if it == nil || r.cache == nil {
 		return
 	}
-	r.cache.Set(it.GetLink(), it)
+	r.cache.Store(it.GetLink(), it)
 }
 
 func iriFromObjectPath(p string, r *repo) vocab.IRI {

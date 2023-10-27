@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	vocab "github.com/go-ap/activitypub"
+	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
-	"github.com/go-ap/storage-fs/internal/cache"
 	"golang.org/x/sys/unix"
 )
 

@@ -3,7 +3,7 @@ package fs
 import (
 	"os"
 
-	"github.com/go-ap/storage-fs/internal/cache"
+	"github.com/go-ap/cache"
 )
 
 func Clean(conf Config) error {
