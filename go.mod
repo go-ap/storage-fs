@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/go-ap/activitypub v0.0.0-20231003111253-1fba3772399b
-	github.com/go-ap/cache v0.0.0-20231027104534-41760c05fbc7
+	github.com/go-ap/cache v0.0.0-20231028144217-f2be2836e1be
 	github.com/go-ap/errors v0.0.0-20231003111023-183eef4b31b7
 	github.com/go-ap/filters v0.0.0-20231027164309-3a17bd085c06
 	github.com/go-ap/processing v0.0.0-20231027184038-0fb5186333ec
