@@ -15,6 +15,13 @@ func InCollection(iri vocab.IRI) filters.Fn {
 	}
 }
 
-func FiltersFromIRI(i vocab.IRI) (filters.Fns, error) {
-	return filters.FromIRI(i)
+func FiltersFromIRI(i vocab.IRI) (vocab.IRI, filters.Fns, error) {
+	f, err := filters.FromIRI(i)
+
+	if u, err := i.URL(); err == nil && len(u.RawQuery) > 0 {
+		u.RawQuery = ""
+		i = vocab.IRI(u.String())
+	}
+
+	return i, f, err
 }

@@ -106,18 +106,20 @@ func (r *repo) Close() {
 }
 
 // Load
-func (r *repo) Load(i vocab.IRI, _ ...filters.Fn) (vocab.Item, error) {
+func (r *repo) Load(i vocab.IRI, f ...filters.Fn) (vocab.Item, error) {
 	if err := r.Open(); err != nil {
 		return nil, err
 	}
 	defer r.Close()
 
-	f, err := filters.FiltersFromIRI(i)
-	if err != nil {
-		return nil, err
+	var unused filters.Fns
+	if len(f) == 0 {
+		i, unused, _ = FiltersFromIRI(i)
+		if len(unused) > 0 {
+			f = unused
+		}
 	}
-
-	return r.loadFromPath(f)
+	return r.loadFromPath(i, f...)
 }
 
 // Create
@@ -379,10 +381,10 @@ func (r *repo) Delete(it vocab.Item) error {
 	if err != nil {
 		return err
 	}
-	return delete(r, it)
+	return r.delete(it)
 }
 
-func delete(r *repo, it vocab.Item) error {
+func (r *repo) delete(it vocab.Item) error {
 	if it.IsCollection() {
 		return vocab.OnCollectionIntf(it, func(c vocab.CollectionInterface) error {
 			var err error
@@ -785,10 +787,8 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	}
 	writeSingleObjFn := func(it vocab.Item) (vocab.Item, error) {
 		itPath := r.itemStoragePath(it.GetLink())
-		mkDirIfNotExists(itPath)
+		_ = mkDirIfNotExists(itPath)
 
-		// TODO(marius): it's possible to set the encoding/decoding functions on the package or storage object level
-		//  instead of using jsonld.(Un)Marshal like this.
 		entryBytes, err := encodeItemFn(it)
 		if err != nil {
 			return it, errors.Annotatef(err, "could not marshal object")
@@ -804,7 +804,11 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 			r.errFn("%s not found", objPath)
 			return it, errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				r.errFn("Unable to close file: %s", err)
+			}
+		}()
 		wrote, err := f.Write(entryBytes)
 		if err != nil {
 			return it, errors.Annotatef(err, "could not store encoded object")
@@ -873,7 +877,7 @@ func loadFromRaw(raw []byte) (vocab.Item, error) {
 	return decodeItemFn(raw)
 }
 
-func (r *repo) loadOneFromPath(f Filterable) (vocab.Item, error) {
+func (r *repo) loadOneFromPath(f vocab.IRI) (vocab.Item, error) {
 	col, err := r.loadFromPath(f)
 	if err != nil {
 		return nil, err
@@ -883,12 +887,12 @@ func (r *repo) loadOneFromPath(f Filterable) (vocab.Item, error) {
 	}
 	if col.IsCollection() {
 		var result vocab.Item
-		vocab.OnCollectionIntf(col, func(col vocab.CollectionInterface) error {
+		_ = vocab.OnCollectionIntf(col, func(col vocab.CollectionInterface) error {
 			result = col.Collection().First()
 			return nil
 		})
 		if vocab.IsIRI(result) && result.GetLink().Equals(f.GetLink(), false) {
-			// NOTE(marius): basically we ended up with the same iri
+			// NOTE(marius): this covers the case where we ended up with the same IRI
 			return nil, errors.NotFoundf("nothing found")
 		}
 		return result, nil
@@ -896,15 +900,13 @@ func (r *repo) loadOneFromPath(f Filterable) (vocab.Item, error) {
 	return col, nil
 }
 
-func loadFilteredPropsForActor(r *repo, f Filterable) func(a *vocab.Actor) error {
+func loadFilteredPropsForActor(r *repo) func(a *vocab.Actor) error {
 	return func(a *vocab.Actor) error {
-		return vocab.OnObject(a, loadFilteredPropsForObject(r, f))
+		return vocab.OnObject(a, loadFilteredPropsForObject(r))
 	}
 }
 
-var subFilterValidationError = errors.NotValidf("Sub-filter failed validation")
-
-func loadFilteredPropsForObject(r *repo, f Filterable) func(o *vocab.Object) error {
+func loadFilteredPropsForObject(r *repo) func(o *vocab.Object) error {
 	return func(o *vocab.Object) error {
 		if len(o.Tag) == 0 {
 			return nil
@@ -923,7 +925,7 @@ func loadFilteredPropsForObject(r *repo, f Filterable) func(o *vocab.Object) err
 	}
 }
 
-func dereferenceItemAndFilter(r *repo, f Filterable, ob vocab.Item) (vocab.Item, error) {
+func dereferenceItemAndFilter(r *repo, ob vocab.Item) (vocab.Item, error) {
 	if vocab.IsNil(ob) {
 		return ob, nil
 	}
@@ -937,54 +939,41 @@ func dereferenceItemAndFilter(r *repo, f Filterable, ob vocab.Item) (vocab.Item,
 			ob = o
 		}
 	}
-	if f != nil {
-		o, err := filters.FilterIt(ob, f)
-		if err != nil {
-			return ob, err
-		}
-		if o == nil {
-			return ob, subFilterValidationError
-		}
-		ob = o
-	}
 	return ob, nil
 }
 
-func loadFilteredPropsForActivity(r *repo, f Filterable) func(a *vocab.Activity) error {
+func loadFilteredPropsForActivity(r *repo) func(a *vocab.Activity) error {
 	return func(a *vocab.Activity) error {
 		var err error
-		_, fo := filters.FiltersOnActivityObject(f)
 		if !vocab.IsNil(a.Object) && a.ID.Equals(a.Object.GetLink(), true) {
 			r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
 			return errors.BadGatewayf("invalid activity with id %s, referencing itself as an object: %s", a.ID, a.Object.GetLink())
 		}
-		if a.Object, err = dereferenceItemAndFilter(r, fo, a.Object); err != nil {
+		if a.Object, err = dereferenceItemAndFilter(r, a.Object); err != nil {
 			return err
 		}
-		return vocab.OnIntransitiveActivity(a, loadFilteredPropsForIntransitiveActivity(r, f))
+		return vocab.OnIntransitiveActivity(a, loadFilteredPropsForIntransitiveActivity(r))
 	}
 }
 
-func loadFilteredPropsForIntransitiveActivity(r *repo, f Filterable) func(a *vocab.IntransitiveActivity) error {
+func loadFilteredPropsForIntransitiveActivity(r *repo) func(a *vocab.IntransitiveActivity) error {
 	return func(a *vocab.IntransitiveActivity) error {
 		var err error
-		_, fa := filters.FiltersOnActivityActor(f)
 		if !vocab.IsNil(a.Actor) && a.ID.Equals(a.Actor.GetLink(), true) {
 			r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
 			return errors.BadGatewayf("invalid activity with id %s, referencing itself as an actor: %s", a.ID, a.Actor.GetLink())
 		}
-		if a.Actor, err = dereferenceItemAndFilter(r, fa, a.Actor); err != nil {
+		if a.Actor, err = dereferenceItemAndFilter(r, a.Actor); err != nil {
 			return err
 		}
-		_, ft := filters.FiltersOnActivityTarget(f)
 		if !vocab.IsNil(a.Target) && a.ID.Equals(a.Target.GetLink(), true) {
 			r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original object. (%s)", a.Type, a.ID)
 			return errors.BadGatewayf("invalid activity with id %s, referencing itself as a target: %s", a.ID, a.Target.GetLink())
 		}
-		if a.Target, err = dereferenceItemAndFilter(r, ft, a.Target); err != nil {
+		if a.Target, err = dereferenceItemAndFilter(r, a.Target); err != nil {
 			return err
 		}
-		return vocab.OnObject(a, loadFilteredPropsForObject(r, f))
+		return vocab.OnObject(a, loadFilteredPropsForObject(r))
 	}
 }
 
@@ -1029,8 +1018,8 @@ func getOriginalIRI(p string) (vocab.Item, error) {
 	upath := ""
 	host := pieces[0]
 	// NOTE(marius): this heuristic of trying to see if the path we received is of type activities/UUID
-	// is not very good and it might lead to problems down the line.
-	// Currently it prevents returning invalid IRIs when an item in an inbox points to a valid folder in /activities,
+	// is not very good, and it might lead to problems down the line.
+	// Currently, it prevents returning invalid IRIs when an item in an inbox points to a valid folder in /activities,
 	// but there is no __raw document there. The result before this fix was an IRI of type https://activities/UUID
 	if filters.FedBOXCollections.Contains(vocab.CollectionPath(host)) {
 		// directory is local, but has no __raw file
@@ -1050,10 +1039,10 @@ func (r *repo) loadFromCache(f Filterable) vocab.Item {
 	return r.cache.Load(f.GetLink())
 }
 
-func (r *repo) loadItem(p string, f Filterable) (vocab.Item, error) {
+func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Fn) (vocab.Item, error) {
 	var it vocab.Item
-	if f != nil {
-		if cachedIt := r.loadFromCache(f.GetLink()); cachedIt != nil {
+	if iri != "" {
+		if cachedIt := r.loadFromCache(iri); cachedIt != nil {
 			it = cachedIt
 		}
 	}
@@ -1089,31 +1078,28 @@ func (r *repo) loadItem(p string, f Filterable) (vocab.Item, error) {
 	// NOTE(marius): this can probably expedite filtering if we early exit if we fail to load the
 	// properties that need to load for sub-filters.
 	if vocab.IntransitiveActivityTypes.Contains(typ) {
-		if validErr := vocab.OnIntransitiveActivity(it, loadFilteredPropsForIntransitiveActivity(r, f)); validErr != nil {
+		if validErr := vocab.OnIntransitiveActivity(it, loadFilteredPropsForIntransitiveActivity(r)); validErr != nil {
 			return nil, nil
 		}
 	}
 	if vocab.ActivityTypes.Contains(typ) {
-		if validErr := vocab.OnActivity(it, loadFilteredPropsForActivity(r, f)); validErr != nil {
+		if validErr := vocab.OnActivity(it, loadFilteredPropsForActivity(r)); validErr != nil {
 			return nil, nil
 		}
 	}
 	if vocab.ActorTypes.Contains(typ) {
-		if validErr := vocab.OnActor(it, loadFilteredPropsForActor(r, f)); validErr != nil {
+		if validErr := vocab.OnActor(it, loadFilteredPropsForActor(r)); validErr != nil {
 			return nil, nil
 		}
 	}
 	if vocab.ObjectTypes.Contains(typ) {
-		if validErr := vocab.OnObject(it, loadFilteredPropsForObject(r, f)); validErr != nil {
+		if validErr := vocab.OnObject(it, loadFilteredPropsForObject(r)); validErr != nil {
 			return nil, nil
 		}
 	}
 
 	r.setToCache(it)
-	if f != nil {
-		return filters.FilterIt(it, f)
-	}
-	return it, nil
+	return filters.Fns(fil).Run(it), nil
 }
 
 func (r *repo) setToCache(it vocab.Item) {
@@ -1123,28 +1109,18 @@ func (r *repo) setToCache(it vocab.Item) {
 	r.cache.Store(it.GetLink(), it)
 }
 
-func iriFromObjectPath(p string, r *repo) vocab.IRI {
-	p = strings.Replace(p, r.path, "", -1)
-	p = strings.Replace(p, filepath.Join("/", objectKey), "", -1)
-	if !strings.Contains(p, "%2F") {
-		return vocab.IRI("https:/" + p)
-	}
-	// the path contains encoded "/" characters, which means is a symlink to another folder
-	_, p = filepath.Split(p)
-	p, _ = url.PathUnescape(p)
-	return vocab.IRI("https://" + p)
-}
-
-func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
-	itPath := r.itemStoragePath(f.GetLink())
-	it, err := r.loadItem(getObjectKey(itPath), f)
+func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Fn) (vocab.Item, error) {
+	itPath := r.itemStoragePath(iri.GetLink())
+	it, err := r.loadItem(getObjectKey(itPath), iri, fil...)
 	if err != nil || vocab.IsNil(it) {
 		if !isHiddenCollectionKey(itPath) {
-			r.logFn("unable to load collection object for %s: %s", f.GetLink(), err.Error())
+			r.logFn("unable to load collection object for %s: %s", iri, err.Error())
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "unable to load collection")
 		}
 		// NOTE(marius): this creates blocked/ignored collections if they don't exist as dumb folders
-		mkDirIfNotExists(itPath)
+		if err = mkDirIfNotExists(itPath); err != nil {
+			r.errFn("unable to create collection %s: %s", iri, err.Error())
+		}
 	}
 	items := make(vocab.ItemCollection, 0)
 	err = filepath.WalkDir(itPath, func(p string, info os.DirEntry, err error) error {
@@ -1154,17 +1130,17 @@ func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 			}
 			return nil
 		}
-		dirPath, _ := path.Split(p)
+		dirPath, _ := filepath.Split(p)
 		dir := strings.TrimRight(dirPath, "/")
 		if dir != itPath || filepath.Base(p) == objectKey {
 			return nil
 		}
-		if isStorageCollectionKey(itPath) {
-			if ff, ok := f.(*filters.Filters); ok {
-				ff.IRI = iriFromObjectPath(p, r)
-			}
+
+		iriFromPath := func(p string) vocab.IRI {
+			return vocab.IRI(fmt.Sprintf("https://%s", strings.Replace(p, r.path, "", 1)))
 		}
-		ob, err := r.loadItem(getObjectKey(p), f)
+		iri = iriFromPath(p)
+		ob, err := r.loadItem(getObjectKey(p), iri, fil...)
 		if err != nil {
 			r.logFn("unable to load %s: %s", p, err.Error())
 			return nil
@@ -1181,25 +1157,23 @@ func (r *repo) loadCollectionFromPath(f Filterable) (vocab.Item, error) {
 
 	err = vocab.OnOrderedCollection(it, func(col *vocab.OrderedCollection) error {
 		col.OrderedItems = items
-		if col.TotalItems == 0 {
-			col.TotalItems = uint(len(items))
-		}
+		col.TotalItems = uint(len(items))
 		return nil
 	})
 	return it, err
 }
 
-func (r *repo) loadFromPath(f Filterable) (vocab.Item, error) {
+func (r *repo) loadFromPath(iri vocab.IRI, fil ...filters.Fn) (vocab.Item, error) {
 	var err error
 	var it vocab.Item
 
-	itPath := r.itemStoragePath(f.GetLink())
+	itPath := r.itemStoragePath(iri)
 
 	if isStorageCollectionKey(itPath) {
-		return r.loadCollectionFromPath(f)
+		return r.loadCollectionFromPath(iri, fil...)
 	} else {
-		if it, err = r.loadItem(getObjectKey(itPath), f); err != nil {
-			r.errFn("unable to load %s: %s", f.GetLink(), err.Error())
+		if it, err = r.loadItem(getObjectKey(itPath), iri, fil...); err != nil {
+			r.errFn("unable to load %s: %s", iri, err.Error())
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
 		if vocab.IsNil(it) {
