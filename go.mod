@@ -4,9 +4,9 @@ go 1.19
 
 require (
 	github.com/go-ap/activitypub v0.0.0-20231030184441-9f208f3d7c66
-	github.com/go-ap/cache v0.0.0-20231027104534-41760c05fbc7
+	github.com/go-ap/cache v0.0.0-20231030184621-cee2d5de7cc1
 	github.com/go-ap/errors v0.0.0-20231003111023-183eef4b31b7
-	github.com/go-ap/filters v0.0.0-20231102134945-ea8564852def
+	github.com/go-ap/filters v0.0.0-20231103210231-984efe274c53
 	github.com/go-ap/processing v0.0.0-20231031181732-4319277d9b5b
 	github.com/openshift/osin v1.0.1
 	golang.org/x/crypto v0.14.0
