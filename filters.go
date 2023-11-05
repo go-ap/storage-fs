@@ -5,17 +5,30 @@ import (
 	"github.com/go-ap/filters"
 )
 
-func InCollection(iri vocab.IRI) filters.Fn {
-	_, col := vocab.Split(iri)
-	return func(item vocab.Item) bool {
-		if col == vocab.Unknown {
-			return false
-		}
-		return item.GetLink().Contains(iri, true)
-	}
+type CollectionFilter interface {
+	Run(vocab.CollectionInterface) vocab.Item
 }
 
-func FiltersFromIRI(i vocab.IRI) (vocab.IRI, filters.Fns, error) {
+type ItemFilter interface {
+	Run(vocab.Item) vocab.Item
+}
+
+type inCollectionCheck vocab.IRI
+
+func (i inCollectionCheck) Apply(item vocab.Item) bool {
+	iri := vocab.IRI(i)
+	_, col := vocab.Split(iri)
+	if col == vocab.Unknown {
+		return false
+	}
+	return item.GetLink().Contains(iri, true)
+}
+
+func InCollection(iri vocab.IRI) filters.Check {
+	return inCollectionCheck(iri)
+}
+
+func FiltersFromIRI(i vocab.IRI) (vocab.IRI, filters.Checks, error) {
 	f, err := filters.FromIRI(i)
 
 	if u, err := i.URL(); err == nil && len(u.RawQuery) > 0 {

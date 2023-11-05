@@ -106,13 +106,13 @@ func (r *repo) Close() {
 }
 
 // Load
-func (r *repo) Load(i vocab.IRI, f ...filters.Fn) (vocab.Item, error) {
+func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 	if err := r.Open(); err != nil {
 		return nil, err
 	}
 	defer r.Close()
 
-	var unused filters.Fns
+	var unused filters.Checks
 	if len(f) == 0 {
 		i, unused, _ = FiltersFromIRI(i)
 		if len(unused) > 0 {
@@ -1039,7 +1039,7 @@ func (r *repo) loadFromCache(f Filterable) vocab.Item {
 	return r.cache.Load(f.GetLink())
 }
 
-func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Fn) (vocab.Item, error) {
+func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
 	var it vocab.Item
 	if iri != "" {
 		if cachedIt := r.loadFromCache(iri); cachedIt != nil {
@@ -1099,7 +1099,7 @@ func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Fn) (vocab.Item,
 	}
 
 	r.setToCache(it)
-	return filters.Fns(fil).Run(it), nil
+	return filters.Checks(fil).Run(it), nil
 }
 
 func (r *repo) setToCache(it vocab.Item) {
@@ -1109,7 +1109,7 @@ func (r *repo) setToCache(it vocab.Item) {
 	r.cache.Store(it.GetLink(), it)
 }
 
-func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Fn) (vocab.Item, error) {
+func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
 	itPath := r.itemStoragePath(iri.GetLink())
 	it, err := r.loadItem(getObjectKey(itPath), iri, fil...)
 	if err != nil || vocab.IsNil(it) {
@@ -1163,7 +1163,7 @@ func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Fn) (vocab.I
 	return it, err
 }
 
-func (r *repo) loadFromPath(iri vocab.IRI, fil ...filters.Fn) (vocab.Item, error) {
+func (r *repo) loadFromPath(iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
 	var err error
 	var it vocab.Item
 
