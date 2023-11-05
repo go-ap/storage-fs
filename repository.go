@@ -112,13 +112,6 @@ func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 	}
 	defer r.Close()
 
-	var unused filters.Checks
-	if len(f) == 0 {
-		i, unused, _ = FiltersFromIRI(i)
-		if len(unused) > 0 {
-			f = unused
-		}
-	}
 	it, err := r.loadFromPath(i, f...)
 	if err != nil {
 		return nil, err
@@ -1126,6 +1119,10 @@ func (r *repo) setToCache(it vocab.Item) {
 func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
 	itPath := r.itemStoragePath(iri.GetLink())
 	it, err := r.loadItem(getObjectKey(itPath), iri, fil...)
+	_ = vocab.OnObject(it, func(ob *vocab.Object) error {
+		ob.ID = iri
+		return nil
+	})
 	if err != nil || vocab.IsNil(it) {
 		if !isHiddenCollectionKey(itPath) {
 			r.logFn("unable to load collection object for %s: %s", iri, err.Error())
