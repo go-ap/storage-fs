@@ -119,7 +119,11 @@ func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 			f = unused
 		}
 	}
-	return r.loadFromPath(i, f...)
+	it, err := r.loadFromPath(i, f...)
+	if err != nil {
+		return nil, err
+	}
+	return filters.Checks(f).Run(it), nil
 }
 
 // Create
@@ -925,7 +929,7 @@ func loadFilteredPropsForObject(r *repo) func(o *vocab.Object) error {
 	}
 }
 
-func dereferenceItemAndFilter(r *repo, ob vocab.Item) (vocab.Item, error) {
+func dereferenceItemAndFilter(r *repo, ob vocab.Item, fil ...filters.Check) (vocab.Item, error) {
 	if vocab.IsNil(ob) {
 		return ob, nil
 	}
@@ -939,24 +943,28 @@ func dereferenceItemAndFilter(r *repo, ob vocab.Item) (vocab.Item, error) {
 			ob = o
 		}
 	}
+	if filtered := filters.Checks(fil).Run(ob); filtered == nil {
+		ob = ob.GetLink()
+	}
 	return ob, nil
 }
 
-func loadFilteredPropsForActivity(r *repo) func(a *vocab.Activity) error {
+func loadFilteredPropsForActivity(r *repo, fil ...filters.Check) func(a *vocab.Activity) error {
 	return func(a *vocab.Activity) error {
 		var err error
 		if !vocab.IsNil(a.Object) && a.ID.Equals(a.Object.GetLink(), true) {
 			r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
 			return errors.BadGatewayf("invalid activity with id %s, referencing itself as an object: %s", a.ID, a.Object.GetLink())
 		}
-		if a.Object, err = dereferenceItemAndFilter(r, a.Object); err != nil {
+		if a.Object, err = dereferenceItemAndFilter(r, a.Object, fil...); err != nil {
 			return err
 		}
-		return vocab.OnIntransitiveActivity(a, loadFilteredPropsForIntransitiveActivity(r))
+		fil = filters.IntransitiveActivityChecks(fil...)
+		return vocab.OnIntransitiveActivity(a, loadFilteredPropsForIntransitiveActivity(r, fil...))
 	}
 }
 
-func loadFilteredPropsForIntransitiveActivity(r *repo) func(a *vocab.IntransitiveActivity) error {
+func loadFilteredPropsForIntransitiveActivity(r *repo, fil ...filters.Check) func(a *vocab.IntransitiveActivity) error {
 	return func(a *vocab.IntransitiveActivity) error {
 		var err error
 		if !vocab.IsNil(a.Actor) && a.ID.Equals(a.Actor.GetLink(), true) {
@@ -1082,6 +1090,12 @@ func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Check) (vocab.It
 			return nil, nil
 		}
 	}
+	if vocab.IntransitiveActivityTypes.Contains(typ) {
+		checks := filters.IntransitiveActivityChecks(fil...)
+		if validErr := vocab.OnIntransitiveActivity(it, loadFilteredPropsForIntransitiveActivity(r, checks...)); validErr != nil {
+			return nil, nil
+		}
+	}
 	if vocab.ActivityTypes.Contains(typ) {
 		if validErr := vocab.OnActivity(it, loadFilteredPropsForActivity(r)); validErr != nil {
 			return nil, nil
@@ -1099,7 +1113,7 @@ func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Check) (vocab.It
 	}
 
 	r.setToCache(it)
-	return filters.Checks(fil).Run(it), nil
+	return it, nil
 }
 
 func (r *repo) setToCache(it vocab.Item) {
@@ -1155,7 +1169,7 @@ func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (voca
 		return it, err
 	}
 
-	err = vocab.OnOrderedCollection(it, func(col *vocab.OrderedCollection) error {
+	_ = vocab.OnOrderedCollection(it, func(col *vocab.OrderedCollection) error {
 		col.OrderedItems = items
 		col.TotalItems = uint(len(items))
 		return nil
