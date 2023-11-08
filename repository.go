@@ -43,8 +43,6 @@ type Config struct {
 	ErrFn       loggerFn
 }
 
-type Filterable = processing.Filterable
-
 var errMissingPath = errors.Newf("missing path in config")
 
 // New returns a new repo repository
@@ -708,11 +706,11 @@ func deleteCollectionFromPath(r repo, it vocab.Item) error {
 	return nil
 }
 
-func (r *repo) removeFromCache(it Filterable) {
-	if r.cache == nil || it == nil {
+func (r *repo) removeFromCache(iri vocab.IRI) {
+	if r.cache == nil {
 		return
 	}
-	r.cache.Delete(it.GetLink())
+	r.cache.Delete(iri.GetLink())
 }
 
 // deleteCollections
@@ -1033,11 +1031,11 @@ func getOriginalIRI(p string) (vocab.Item, error) {
 	return vocab.IRI(u.String()), nil
 }
 
-func (r *repo) loadFromCache(f Filterable) vocab.Item {
-	if f == nil || r.cache == nil {
+func (r *repo) loadFromCache(iri vocab.IRI) vocab.Item {
+	if r.cache == nil {
 		return nil
 	}
-	return r.cache.Load(f.GetLink())
+	return r.cache.Load(iri.GetLink())
 }
 
 func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
