@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -1163,13 +1164,34 @@ func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (voca
 		r.errFn("unable to load from fs: %s", err.Error())
 		return it, err
 	}
+	if !vocab.IsNil(it) {
+		if orderedCollectionTypes.Contains(it.GetType()) {
+			_ = vocab.OnOrderedCollection(it, postProcessOrderedItems(items))
+		} else {
+			_ = vocab.OnCollection(it, postProcessItems(items))
+		}
+	}
 
-	_ = vocab.OnOrderedCollection(it, func(col *vocab.OrderedCollection) error {
-		col.OrderedItems = items
+	return it, err
+}
+
+func postProcessItems(items vocab.ItemCollection) vocab.WithCollectionFn {
+	return func(col *vocab.Collection) error {
+		col.Items = items
 		col.TotalItems = uint(len(items))
 		return nil
-	})
-	return it, err
+	}
+}
+
+func postProcessOrderedItems(items vocab.ItemCollection) vocab.WithOrderedCollectionFn {
+	return func(col *vocab.OrderedCollection) error {
+		col.OrderedItems = items
+		sort.Slice(col.OrderedItems, func(i, j int) bool {
+			return vocab.ItemOrderTimestamp(col.OrderedItems[i], col.OrderedItems[j])
+		})
+		col.TotalItems = uint(len(items))
+		return nil
+	}
 }
 
 func (r *repo) loadFromPath(iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
