@@ -20,7 +20,7 @@ func saveFsClients(base string, clients ...cl) error {
 	return nil
 }
 
-func saveFsItem(it interface{}, basePath string) error {
+func saveFsItem(it any, basePath string) error {
 	if err := os.MkdirAll(basePath, defaultPerm); err != nil {
 		return err
 	}

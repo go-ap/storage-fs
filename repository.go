@@ -33,9 +33,9 @@ var decodeItemFn = vocab.UnmarshalJSON
 
 var errNotImplemented = errors.NotImplementedf("not implemented")
 
-type loggerFn func(string, ...interface{})
+type loggerFn func(string, ...any)
 
-var defaultLogFn = func(string, ...interface{}) {}
+var defaultLogFn = func(string, ...any) {}
 
 type Config struct {
 	Path        string

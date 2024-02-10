@@ -26,7 +26,7 @@ type cl struct {
 	Id          string
 	Secret      string
 	RedirectUri string
-	Extra       interface{}
+	Extra       any
 }
 
 type auth struct {
@@ -37,7 +37,7 @@ type auth struct {
 	RedirectURI string
 	State       string
 	CreatedAt   time.Time
-	Extra       interface{}
+	Extra       any
 }
 
 type acc struct {
@@ -50,7 +50,7 @@ type acc struct {
 	Scope        string
 	RedirectURI  string
 	CreatedAt    time.Time
-	Extra        interface{}
+	Extra        any
 }
 
 type ref struct {
@@ -67,7 +67,7 @@ var decodeFn = func(data []byte, m any) error {
 	return json.NewDecoder(bytes.NewReader(data)).Decode(m)
 }
 
-func interfaceIsNil(c interface{}) bool {
+func interfaceIsNil(c any) bool {
 	return reflect.ValueOf(c).Kind() == reflect.Ptr && reflect.ValueOf(c).IsNil()
 }
 
@@ -235,7 +235,7 @@ func createFolderIfNotExists(p string) error {
 	return nil
 }
 
-func putItem(basePath string, it interface{}) error {
+func putItem(basePath string, it any) error {
 	raw, err := encodeFn(it)
 	if err != nil {
 		return errors.Annotatef(err, "Unable to marshal %T", it)
