@@ -8,6 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	xerrors "errors"
 	"fmt"
 	"io/fs"
 	"math/rand"
@@ -111,7 +112,7 @@ func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 	}
 	defer r.Close()
 
-	it, err := r.loadFromPath(i, f...)
+	it, err := r.loadFromIRI(i, f...)
 	if err != nil {
 		return nil, err
 	}
@@ -764,19 +765,6 @@ func deleteItem(r *repo, it vocab.Item) error {
 	return nil
 }
 
-type multiErr []error
-
-func (e multiErr) Error() string {
-	s := strings.Builder{}
-	for i, err := range e {
-		s.WriteString(err.Error())
-		if i < len(e)-1 {
-			s.WriteString(": ")
-		}
-	}
-	return s.String()
-}
-
 func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	if err := createCollections(r, it); err != nil {
 		return it, errors.Annotatef(err, "could not create object's collections")
@@ -819,7 +807,7 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 
 	if vocab.IsItemCollection(it) {
 		err := vocab.OnItemCollection(it, func(col *vocab.ItemCollection) error {
-			m := make(multiErr, 0)
+			m := make([]error, 0)
 			for i, ob := range *col {
 				saved, err := writeSingleObjFn(ob)
 				if err == nil {
@@ -829,7 +817,7 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 				}
 			}
 			if len(m) > 0 {
-				return m
+				return xerrors.Join(m...)
 			}
 			return nil
 		})
@@ -874,7 +862,7 @@ func loadFromRaw(raw []byte) (vocab.Item, error) {
 }
 
 func (r *repo) loadOneFromPath(f vocab.IRI) (vocab.Item, error) {
-	col, err := r.loadFromPath(f)
+	col, err := r.loadFromIRI(f)
 	if err != nil {
 		return nil, err
 	}
@@ -1194,7 +1182,7 @@ func postProcessOrderedItems(items vocab.ItemCollection) vocab.WithOrderedCollec
 	}
 }
 
-func (r *repo) loadFromPath(iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
+func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
 	var err error
 	var it vocab.Item
 
