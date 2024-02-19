@@ -7,7 +7,7 @@ require (
 	github.com/go-ap/cache v0.0.0-20240211125123-3bb4d1c6309b
 	github.com/go-ap/errors v0.0.0-20231003111023-183eef4b31b7
 	github.com/go-ap/filters v0.0.0-20240211125015-2de118fbc889
-	github.com/go-ap/processing v0.0.0-20240213101645-8dc4152a50da
+	github.com/go-ap/processing v0.0.0-20240219170415-0288cef1f678
 	github.com/openshift/osin v1.0.1
 	golang.org/x/crypto v0.19.0
 	golang.org/x/sys v0.17.0
