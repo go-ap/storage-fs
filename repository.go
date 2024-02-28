@@ -234,7 +234,7 @@ func iriPath(iri vocab.IRI) string {
 	//	pieces = append(pieces, url.PathEscape(u.RawQuery))
 	//}
 	if u.Fragment != "" {
-		pieces = append(pieces, url.PathEscape(u.Fragment))
+		pieces = append(pieces, strings.ReplaceAll(u.Fragment, "#", ""))
 	}
 	return filepath.Join(pieces...)
 }
@@ -933,7 +933,7 @@ func loadFilteredPropsForActivity(r *repo, fil ...filters.Check) func(a *vocab.A
 	return func(a *vocab.Activity) error {
 		var err error
 		if !vocab.IsNil(a.Object) && a.ID.Equals(a.Object.GetLink(), true) {
-			r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
+			//r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
 			return errors.BadGatewayf("invalid activity with id %s, referencing itself as an object: %s", a.ID, a.Object.GetLink())
 		}
 		if a.Object, err = dereferenceItemAndFilter(r, a.Object, fil...); err != nil {
