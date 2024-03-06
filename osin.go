@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/go-ap/errors"
@@ -171,7 +172,7 @@ func (r *repo) ListClients() ([]osin.Client, error) {
 	defer r.Close()
 	clients := make([]osin.Client, 0)
 
-	_, err = r.loadFromOauthPath(r.oauthPath(clientsBucket), func(raw []byte) error {
+	_, err = r.loadFromOauthPath(r.oauthClientPath(clientsBucket), func(raw []byte) error {
 		cl := cl{}
 		if err := decodeFn(raw, &cl); err != nil {
 			return err
@@ -210,6 +211,14 @@ func (r *repo) oauthPath(pieces ...string) string {
 	return filepath.Join(pieces...)
 }
 
+func (r *repo) oauthClientPath(pieces ...string) string {
+	for i := range pieces {
+		pieces[i] = strings.Replace(pieces[i], "https://", "", 1)
+	}
+	pieces = append([]string{r.path, folder}, pieces...)
+	return filepath.Join(pieces...)
+}
+
 // GetClient
 func (r *repo) GetClient(id string) (osin.Client, error) {
 	if id == "" {
@@ -220,7 +229,7 @@ func (r *repo) GetClient(id string) (osin.Client, error) {
 		return nil, err
 	}
 	defer r.Close()
-	return r.loadClientFromPath(r.oauthPath(clientsBucket, id))
+	return r.loadClientFromPath(r.oauthClientPath(clientsBucket, id))
 }
 
 func createFolderIfNotExists(p string) error {
@@ -280,7 +289,7 @@ func (r *repo) UpdateClient(c osin.Client) error {
 		RedirectUri: c.GetRedirectUri(),
 		Extra:       c.GetUserData(),
 	}
-	clientPath := r.oauthPath(clientsBucket, cl.Id)
+	clientPath := r.oauthClientPath(clientsBucket, cl.Id)
 	if err = createFolderIfNotExists(clientPath); err != nil {
 		return errors.Annotatef(err, "Invalid path %s", clientPath)
 	}
@@ -299,7 +308,7 @@ func (r *repo) RemoveClient(id string) error {
 		return errors.Annotatef(err, "Unable to open fs *repositoryage")
 	}
 	defer r.Close()
-	return os.RemoveAll(r.oauthPath(clientsBucket, id))
+	return os.RemoveAll(r.oauthClientPath(clientsBucket, id))
 }
 
 // SaveAuthorize saves authorize data.
@@ -347,7 +356,7 @@ func (r *repo) loadAuthorizeFromPath(authPath string) (*osin.AuthorizeData, erro
 			r.errFn("Code %s: %s", auth.Code, err)
 			return err
 		}
-		cl, err := r.loadClientFromPath(r.oauthPath(clientsBucket, auth.Client))
+		cl, err := r.loadClientFromPath(r.oauthClientPath(clientsBucket, auth.Client))
 		if err != nil {
 			return err
 		}
@@ -492,7 +501,7 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 			}
 		}
 		if access.Client != "" {
-			data, err := r.loadClientFromPath(r.oauthPath(clientsBucket, access.Client))
+			data, err := r.loadClientFromPath(r.oauthClientPath(clientsBucket, access.Client))
 			if err != nil {
 				err := errors.Annotatef(err, "Unable to load client data for current access token %s.", access.AccessToken)
 				r.errFn("Authorize code %s: %s", access.AccessToken, err)
