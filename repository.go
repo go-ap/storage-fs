@@ -1070,12 +1070,6 @@ func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Check) (vocab.It
 			return nil, nil
 		}
 	}
-	if vocab.IntransitiveActivityTypes.Contains(typ) {
-		checks := filters.IntransitiveActivityChecks(fil...)
-		if validErr := vocab.OnIntransitiveActivity(it, loadFilteredPropsForIntransitiveActivity(r, checks...)); validErr != nil {
-			return nil, nil
-		}
-	}
 	if vocab.ActivityTypes.Contains(typ) {
 		if validErr := vocab.OnActivity(it, loadFilteredPropsForActivity(r)); validErr != nil {
 			return nil, nil
