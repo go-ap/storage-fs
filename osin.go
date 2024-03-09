@@ -466,13 +466,13 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 		if access.Authorize != "" {
 			data, err := r.loadAuthorizeFromPath(r.oauthPath(authorizeBucket, access.Authorize))
 			if err != nil {
-				err := errors.Annotatef(err, "Unable to load authorize data for current access token %s.", access.AccessToken)
-				r.errFn("Authorize code %s: %s", access.AccessToken, err)
+				err := errors.Annotatef(err, "unable to load authorize data for current access token %s.", access.AccessToken)
+				r.errFn("Authorize code %s: %+s", access.Authorize, err)
 				return nil
 			}
 			if data.ExpireAt().Before(time.Now().UTC()) {
-				err := errors.Errorf("Token expired at %s.", data.ExpireAt().String())
-				r.errFn("Access token: %s: %s", access.AccessToken, err)
+				err := errors.Errorf("token expired at %s.", data.ExpireAt().String())
+				r.errFn("Authorize code: %s: %+s", access.Authorize, err)
 				return nil
 			}
 			result.AuthorizeData = data
