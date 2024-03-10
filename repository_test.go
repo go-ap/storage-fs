@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"git.sr.ht/~mariusor/lw"
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
@@ -99,8 +100,7 @@ func Test_repo_Open(t *testing.T) {
 				cwd:    tt.fields.cwd,
 				opened: tt.fields.opened,
 				cache:  tt.fields.cache,
-				logFn:  t.Logf,
-				errFn:  t.Logf,
+				logger: lw.Dev(),
 			}
 			if err := r.Open(); !errors.Is(err, tt.wantErr) {
 				t.Errorf("Open() error = %v, wantErr %v", err, tt.wantErr)
@@ -187,8 +187,7 @@ func Test_repo_Load(t *testing.T) {
 				cwd:    tt.fields.cwd,
 				opened: tt.fields.opened,
 				cache:  tt.fields.cache,
-				logFn:  t.Logf,
-				errFn:  t.Logf,
+				logger: lw.Dev(),
 			}
 			got, err := r.Load(tt.args)
 			if !errors.Is(err, tt.wantErr) {
@@ -234,8 +233,7 @@ func Test_repo_createCollection(t *testing.T) {
 				cwd:    tt.fields.cwd,
 				opened: tt.fields.opened,
 				cache:  cache.New(false),
-				logFn:  t.Logf,
-				errFn:  t.Logf,
+				logger: lw.Dev(),
 			}
 			col, err := createCollectionInPath(r, tt.iri)
 			if (err != nil) != tt.wantErr {

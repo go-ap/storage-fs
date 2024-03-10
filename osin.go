@@ -280,7 +280,7 @@ func (r *repo) UpdateClient(c osin.Client) error {
 	}
 	defer r.Close()
 	if err != nil {
-		r.errFn("Failed to update client id: %s: %+s", c.GetId(), err)
+		r.logger.Errorf("Failed to update client id: %s: %+s", c.GetId(), err)
 		return errors.Annotatef(err, "Invalid user-data")
 	}
 	cl := cl{
@@ -353,7 +353,7 @@ func (r *repo) loadAuthorizeFromPath(authPath string) (*osin.AuthorizeData, erro
 
 		if data.ExpireAt().Before(time.Now().UTC()) {
 			err := errors.Errorf("Token expired at %s.", data.ExpireAt().String())
-			r.errFn("Code %s: %s", auth.Code, err)
+			r.logger.Errorf("Code %s: %s", auth.Code, err)
 			return err
 		}
 		cl, err := r.loadClientFromPath(r.oauthClientPath(clientsBucket, auth.Client))
@@ -467,12 +467,12 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 			data, err := r.loadAuthorizeFromPath(r.oauthPath(authorizeBucket, access.Authorize))
 			if err != nil {
 				err := errors.Annotatef(err, "unable to load authorize data for current access token %s.", access.AccessToken)
-				r.errFn("Authorize code %s: %+s", access.Authorize, err)
+				r.logger.Errorf("Authorize code %s: %+s", access.Authorize, err)
 				return nil
 			}
 			if data.ExpireAt().Before(time.Now().UTC()) {
 				err := errors.Errorf("token expired at %s.", data.ExpireAt().String())
-				r.errFn("Authorize code: %s: %+s", access.Authorize, err)
+				r.logger.Errorf("Authorize code: %s: %+s", access.Authorize, err)
 				return nil
 			}
 			result.AuthorizeData = data
@@ -496,7 +496,7 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 			})
 			if err != nil {
 				err := errors.Annotatef(err, "Unable to load previous access token for %s.", access.AccessToken)
-				r.errFn("Access code %s: %s", access.AccessToken, err)
+				r.logger.Errorf("Access code %s: %s", access.AccessToken, err)
 				return nil
 			}
 		}
@@ -504,7 +504,7 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 			data, err := r.loadClientFromPath(r.oauthClientPath(clientsBucket, access.Client))
 			if err != nil {
 				err := errors.Annotatef(err, "Unable to load client data for current access token %s.", access.AccessToken)
-				r.errFn("Authorize code %s: %s", access.AccessToken, err)
+				r.logger.Errorf("Authorize code %s: %s", access.AccessToken, err)
 				return nil
 			}
 			result.Client = data

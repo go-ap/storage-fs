@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	xerrors "errors"
 	"fmt"
+	"git.sr.ht/~mariusor/lw"
 	"io/fs"
 	"math/rand"
 	"net/url"
@@ -34,15 +35,12 @@ var decodeItemFn = vocab.UnmarshalJSON
 
 var errNotImplemented = errors.NotImplementedf("not implemented")
 
-type loggerFn func(string, ...any)
-
-var defaultLogFn = func(string, ...any) {}
+var emptyLogger = lw.Dev()
 
 type Config struct {
 	Path        string
 	CacheEnable bool
-	LogFn       loggerFn
-	ErrFn       loggerFn
+	Logger      lw.Logger
 }
 
 var errMissingPath = errors.Newf("missing path in config")
@@ -61,17 +59,13 @@ func New(c Config) (*repo, error) {
 	}
 	cwd, _ := getwd()
 	b := repo{
-		path:  p,
-		cwd:   cwd,
-		logFn: defaultLogFn,
-		errFn: defaultLogFn,
-		cache: cache.New(c.CacheEnable),
+		path:   p,
+		cwd:    cwd,
+		logger: lw.Dev(),
+		cache:  cache.New(c.CacheEnable),
 	}
-	if c.LogFn != nil {
-		b.logFn = c.LogFn
-	}
-	if c.ErrFn != nil {
-		b.errFn = c.ErrFn
+	if c.Logger != nil {
+		b.logger = c.Logger
 	}
 	return &b, nil
 }
@@ -81,8 +75,7 @@ type repo struct {
 	cwd    string
 	opened bool
 	cache  cache.CanStore
-	logFn  loggerFn
-	errFn  loggerFn
+	logger lw.Logger
 }
 
 // Open
@@ -143,7 +136,7 @@ func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
 		if !id.IsValid() {
 			op = "Added new"
 		}
-		r.logFn("%s %s: %s", op, it.GetType(), it.GetLink())
+		r.logger.Debugf("%s %s: %s", op, it.GetType(), it.GetLink())
 	}
 	return it, err
 }
@@ -343,7 +336,7 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		itOriginalPath = strings.Replace(itOriginalPath, "../", "", 1)
 		if itOriginalPath == "." {
 			// NOTE(marius): if the relative path resolves to the current folder, we don't try to symlink
-			r.logFn("symlinking path resolved to the current directory: %s", itOriginalPath)
+			r.logger.Debugf("symlinking path resolved to the current directory: %s", itOriginalPath)
 			return nil
 		}
 		// NOTE(marius): we can't use hard links as we're linking to folders :(
@@ -387,7 +380,7 @@ func (r *repo) delete(it vocab.Item) error {
 			var err error
 			for _, it := range c.Collection() {
 				if err = deleteItem(r, it); err != nil {
-					r.logFn("Unable to remove item %s", it.GetLink())
+					r.logger.Debugf("Unable to remove item %s", it.GetLink())
 				}
 			}
 			return nil
@@ -510,13 +503,13 @@ func (r *repo) SaveKey(iri vocab.IRI, key crypto.PrivateKey) (vocab.Item, error)
 		return ob, err
 	}
 	if m != nil && m.PrivateKey != nil {
-		r.logFn("actor %s already has a private key", iri)
+		r.logger.Debugf("actor %s already has a private key", iri)
 	}
 
 	m = new(processing.Metadata)
 	prvEnc, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
-		r.errFn("unable to x509.MarshalPKCS8PrivateKey() the private key %T for %s", key, iri)
+		r.logger.Errorf("unable to x509.MarshalPKCS8PrivateKey() the private key %T for %s", key, iri)
 		return ob, err
 	}
 
@@ -525,7 +518,7 @@ func (r *repo) SaveKey(iri vocab.IRI, key crypto.PrivateKey) (vocab.Item, error)
 		Bytes: prvEnc,
 	})
 	if err = r.SaveMetadata(*m, iri); err != nil {
-		r.errFn("unable to save the private key %T for %s", key, iri)
+		r.logger.Errorf("unable to save the private key %T for %s", key, iri)
 		return ob, err
 	}
 
@@ -540,12 +533,12 @@ func (r *repo) SaveKey(iri vocab.IRI, key crypto.PrivateKey) (vocab.Item, error)
 	case *ed25519.PrivateKey:
 		pub = prv.Public()
 	default:
-		r.errFn("received key %T does not match any of the known private key types", key)
+		r.logger.Errorf("received key %T does not match any of the known private key types", key)
 		return ob, nil
 	}
 	pubEnc, err := x509.MarshalPKIXPublicKey(pub)
 	if err != nil {
-		r.errFn("unable to x509.MarshalPKIXPublicKey() the private key %T for %s", pub, iri)
+		r.logger.Errorf("unable to x509.MarshalPKIXPublicKey() the private key %T for %s", pub, iri)
 		return ob, err
 	}
 	pubEncoded := pem.EncodeToMemory(&pem.Block{
@@ -779,18 +772,18 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 		}
 
 		if err := mkDirIfNotExists(itPath); err != nil {
-			r.errFn("unable to create path: %s, %s", itPath, err)
+			r.logger.Errorf("unable to create path: %s, %s", itPath, err)
 			return it, errors.Annotatef(err, "could not create file")
 		}
 		objPath := getObjectKey(itPath)
 		f, err := os.OpenFile(objPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
-			r.errFn("%s not found", objPath)
+			r.logger.Errorf("%s not found", objPath)
 			return it, errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
 		defer func() {
 			if err := f.Close(); err != nil {
-				r.errFn("Unable to close file: %s", err)
+				r.logger.Errorf("Unable to close file: %s", err)
 			}
 		}()
 		wrote, err := f.Write(entryBytes)
@@ -933,7 +926,7 @@ func loadFilteredPropsForActivity(r *repo, fil ...filters.Check) func(a *vocab.A
 	return func(a *vocab.Activity) error {
 		var err error
 		if !vocab.IsNil(a.Object) && a.ID.Equals(a.Object.GetLink(), true) {
-			//r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
+			//r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
 			return errors.BadGatewayf("invalid activity with id %s, referencing itself as an object: %s", a.ID, a.Object.GetLink())
 		}
 		if a.Object, err = dereferenceItemAndFilter(r, a.Object, fil...); err != nil {
@@ -948,14 +941,14 @@ func loadFilteredPropsForIntransitiveActivity(r *repo, fil ...filters.Check) fun
 	return func(a *vocab.IntransitiveActivity) error {
 		var err error
 		if !vocab.IsNil(a.Actor) && a.ID.Equals(a.Actor.GetLink(), true) {
-			r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
+			r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
 			return errors.BadGatewayf("invalid activity with id %s, referencing itself as an actor: %s", a.ID, a.Actor.GetLink())
 		}
 		if a.Actor, err = dereferenceItemAndFilter(r, a.Actor); err != nil {
 			return err
 		}
 		if !vocab.IsNil(a.Target) && a.ID.Equals(a.Target.GetLink(), true) {
-			r.logFn("Invalid %s activity (probably from mastodon), that overwrote the original object. (%s)", a.Type, a.ID)
+			r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original object. (%s)", a.Type, a.ID)
 			return errors.BadGatewayf("invalid activity with id %s, referencing itself as a target: %s", a.ID, a.Target.GetLink())
 		}
 		if a.Target, err = dereferenceItemAndFilter(r, a.Target); err != nil {
@@ -1106,12 +1099,12 @@ func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (voca
 	})
 	if err != nil || vocab.IsNil(it) {
 		if !isHiddenCollectionKey(itPath) {
-			r.logFn("unable to load collection object for %s: %s", iri, err.Error())
+			r.logger.Debugf("unable to load collection object for %s: %s", iri, err.Error())
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "unable to load collection")
 		}
 		// NOTE(marius): this creates blocked/ignored collections if they don't exist as dumb folders
 		if err = mkDirIfNotExists(itPath); err != nil {
-			r.errFn("unable to create collection %s: %s", iri, err.Error())
+			r.logger.Warnf("unable to create collection %s: %s", iri, err.Error())
 		}
 	}
 	items := make(vocab.ItemCollection, 0)
@@ -1134,7 +1127,7 @@ func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (voca
 		iri = iriFromPath(p)
 		ob, err := r.loadItem(getObjectKey(p), iri, fil...)
 		if err != nil {
-			r.logFn("unable to load %s: %s", p, err.Error())
+			r.logger.Warnf("unable to load %s: %+s", p, err)
 			return nil
 		}
 		if !vocab.IsNil(ob) {
@@ -1143,7 +1136,7 @@ func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (voca
 		return nil
 	})
 	if err != nil {
-		r.errFn("unable to load from fs: %s", err.Error())
+		r.logger.Errorf("unable to load from fs: %+s", err)
 		return it, err
 	}
 	if !vocab.IsNil(it) {
@@ -1186,7 +1179,7 @@ func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, err
 		return r.loadCollectionFromPath(iri, fil...)
 	} else {
 		if it, err = r.loadItem(getObjectKey(itPath), iri, fil...); err != nil {
-			r.errFn("unable to load %s: %s", iri, err.Error())
+			r.logger.Tracef("unable to load %s: %s", iri, err.Error())
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
 		if vocab.IsNil(it) {

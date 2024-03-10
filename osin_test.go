@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"git.sr.ht/~mariusor/lw"
 	"github.com/openshift/osin"
 )
 
@@ -57,7 +58,7 @@ func initialize(tempFolder string) *repo {
 	os.MkdirAll(path.Join(tempFolder, folder, accessBucket), defaultPerm)
 	os.MkdirAll(path.Join(tempFolder, folder, authorizeBucket), defaultPerm)
 	os.MkdirAll(path.Join(tempFolder, folder, refreshBucket), defaultPerm)
-	s := repo{path: tempFolder, logFn: defaultLogFn, errFn: defaultLogFn}
+	s := repo{path: tempFolder, logger: lw.Dev()}
 	return &s
 }
 
