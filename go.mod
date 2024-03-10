@@ -3,11 +3,12 @@ module github.com/go-ap/storage-fs
 go 1.19
 
 require (
+	git.sr.ht/~mariusor/lw v0.0.0-20240310122945-41195752a26e
 	github.com/go-ap/activitypub v0.0.0-20240304122919-ef7a45e2d04a
 	github.com/go-ap/cache v0.0.0-20240304123124-5d953b368fbf
 	github.com/go-ap/errors v0.0.0-20240304112515-6077fa9c17b0
 	github.com/go-ap/filters v0.0.0-20240308123440-369d4a67f42d
-	github.com/go-ap/processing v0.0.0-20240308123728-8c00bd3dda9d
+	github.com/go-ap/processing v0.0.0-20240308130546-81e459b25741
 	github.com/openshift/osin v1.0.1
 	golang.org/x/crypto v0.21.0
 	golang.org/x/sys v0.18.0
@@ -15,9 +16,9 @@ require (
 
 require (
 	git.sr.ht/~mariusor/go-xsd-duration v0.0.0-20220703122237-02e73435a078 // indirect
-	git.sr.ht/~mariusor/lw v0.0.0-20230317075520-07e173563bf8 // indirect
 	github.com/go-ap/client v0.0.0-20240211124832-961fcce8d438 // indirect
 	github.com/go-ap/jsonld v0.0.0-20221030091449-f2a191312c73 // indirect
+	github.com/go-chi/chi/v5 v5.0.12 // indirect
 	github.com/go-fed/httpsig v1.1.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
