@@ -153,7 +153,7 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 	var link vocab.IRI
 	if filters.ValidCollection(t) {
 		// Create the collection on the object, if it doesn't exist
-		i, err := r.loadOneFromPath(ob)
+		i, err := r.loadOneFromIRI(ob)
 		if err != nil {
 			return err
 		}
@@ -275,7 +275,7 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		ob, t := allStorageCollections.Split(colIRI)
 		if isStorageCollectionKey(string(t)) {
 			// Create the collection on the object, if it doesn't exist
-			i, err := r.loadOneFromPath(ob)
+			i, err := r.loadOneFromIRI(ob)
 			if err != nil {
 				return err
 			}
@@ -486,7 +486,7 @@ func (r *repo) LoadKey(iri vocab.IRI) (crypto.PrivateKey, error) {
 
 // SaveKey saves a private key for an actor found by its IRI
 func (r *repo) SaveKey(iri vocab.IRI, key crypto.PrivateKey) (vocab.Item, error) {
-	ob, err := r.loadOneFromPath(iri)
+	ob, err := r.loadOneFromIRI(iri)
 	if err != nil {
 		return nil, err
 	}
@@ -558,7 +558,7 @@ func (r *repo) SaveKey(iri vocab.IRI, key crypto.PrivateKey) (vocab.Item, error)
 
 // GenKey creates and saves a private key for an actor found by its IRI
 func (r *repo) GenKey(iri vocab.IRI) error {
-	ob, err := r.loadOneFromPath(iri)
+	ob, err := r.loadOneFromIRI(iri)
 	if err != nil {
 		return err
 	}
@@ -863,7 +863,7 @@ func loadFromRaw(raw []byte) (vocab.Item, error) {
 	return decodeItemFn(raw)
 }
 
-func (r *repo) loadOneFromPath(f vocab.IRI) (vocab.Item, error) {
+func (r *repo) loadOneFromIRI(f vocab.IRI) (vocab.Item, error) {
 	col, err := r.loadFromIRI(f)
 	if err != nil {
 		return nil, err
@@ -905,7 +905,7 @@ func loadFilteredPropsForObject(r *repo) func(o *vocab.Object) error {
 				if vocab.IsNil(t) || !vocab.IsIRI(t) {
 					return nil
 				}
-				if ob, err := r.loadOneFromPath(t.GetLink()); err == nil {
+				if ob, err := r.loadOneFromIRI(t.GetLink()); err == nil {
 					(*col)[i] = ob
 				}
 			}
@@ -1032,6 +1032,27 @@ func (r *repo) loadFromCache(iri vocab.IRI) vocab.Item {
 	return r.cache.Load(iri.GetLink())
 }
 
+func loadItemFromPath(p string) (vocab.Item, error) {
+	raw, err := loadRawFromPath(p)
+	if err != nil {
+		if os.IsNotExist(err) && !isStorageCollectionKey(filepath.Dir(p)) {
+			return getOriginalIRI(p)
+		}
+		return nil, err
+	}
+	if raw == nil {
+		return nil, nil
+	}
+	it, err := loadFromRaw(raw)
+	if err != nil {
+		return nil, err
+	}
+	if vocab.IsNil(it) {
+		return nil, errors.NotFoundf("not found")
+	}
+	return it, nil
+}
+
 func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
 	var it vocab.Item
 	if iri != "" {
@@ -1039,33 +1060,24 @@ func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Check) (vocab.It
 			it = cachedIt
 		}
 	}
+	var err error
 	if vocab.IsNil(it) {
-		raw, err := loadRawFromPath(p)
-		if err != nil {
-			if os.IsNotExist(err) && !isStorageCollectionKey(filepath.Dir(p)) {
-				return getOriginalIRI(p)
-			}
-			return nil, asPathErr(err, r.path)
-		}
-		if raw == nil {
-			return nil, nil
-		}
-		it, err = loadFromRaw(raw)
+		it, err = loadItemFromPath(p)
 		if err != nil {
 			return nil, asPathErr(err, r.path)
 		}
-		if vocab.IsNil(it) {
-			return nil, errors.NotFoundf("not found")
+	}
+	if vocab.IsIRI(it) {
+		if it, err = loadItemFromPath(p); err != nil {
+			return nil, asPathErr(err, r.path)
 		}
+	}
+	if vocab.IsNil(it) {
+		return nil, errors.NotFoundf("not found")
 	}
 	if it.IsCollection() {
 		// we need to dereference them, so no further filtering/processing is needed here
 		return it, nil
-	}
-	if vocab.IsIRI(it) {
-		if it, _ = r.loadOneFromPath(it.GetLink()); vocab.IsNil(it) {
-			return nil, errors.NotFoundf("not found")
-		}
 	}
 	typ := it.GetType()
 	// NOTE(marius): this can probably expedite filtering if we early exit if we fail to load the
