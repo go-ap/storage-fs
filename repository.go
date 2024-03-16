@@ -265,31 +265,33 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
-	col, err := r.Load(colIRI)
-	if err != nil {
-		return err
-	}
-	if isHiddenCollectionKey(r.itemStoragePath(colIRI)) {
-		err = errors.Newf("test")
-		col = colIRI
-	}
-
-	ob, t := allStorageCollections.Split(colIRI)
 	var link vocab.IRI
-	if isStorageCollectionKey(string(t)) {
-		// Create the collection on the object, if it doesn't exist
-		i, err := r.loadOneFromPath(ob)
-		if err != nil {
+	var col vocab.Item
+	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
+	if !isHiddenCollectionKey(r.itemStoragePath(colIRI)) {
+		if col, err = r.Load(colIRI); err != nil {
 			return err
 		}
-		if p, ok := t.AddTo(i); ok {
-			save(r, i)
-			link = p
+		ob, t := allStorageCollections.Split(colIRI)
+		if isStorageCollectionKey(string(t)) {
+			// Create the collection on the object, if it doesn't exist
+			i, err := r.loadOneFromPath(ob)
+			if err != nil {
+				return err
+			}
+			if p, ok := t.AddTo(i); ok {
+				save(r, i)
+				link = p
+			} else {
+				link = t.IRI(i)
+			}
 		} else {
-			link = t.IRI(i)
+			return errors.Newf("Invalid collection %s", t)
 		}
 	} else {
-		return errors.Newf("Invalid collection %s", t)
+		// NOTE(marius): for hidden collections we might not have the __raw file on disk, so we just wing it
+		link = colIRI
+		col = link
 	}
 
 	linkPath := r.itemStoragePath(link)
@@ -644,6 +646,9 @@ func createCollections(r *repo, it vocab.Item) error {
 			p.Followers, _ = createCollectionInPath(r, p.Followers)
 			p.Following, _ = createCollectionInPath(r, p.Following)
 			p.Liked, _ = createCollectionInPath(r, p.Liked)
+			// NOTE(marius): shadow creating hidden collections for Blocked and Ignored items
+			_, _ = createCollectionInPath(r, filters.BlockedType.Of(p))
+			_, _ = createCollectionInPath(r, filters.IgnoredType.Of(p))
 			return nil
 		})
 	}
@@ -712,6 +717,10 @@ func (r *repo) removeFromCache(iri vocab.IRI) {
 func deleteCollections(r repo, it vocab.Item) error {
 	if vocab.ActorTypes.Contains(it.GetType()) {
 		return vocab.OnActor(it, func(p *vocab.Actor) error {
+			// NOTE(marius): deleting the hidden collections for Blocked and Ignored items
+			_ = deleteCollectionFromPath(r, filters.BlockedType.Of(p))
+			_ = deleteCollectionFromPath(r, filters.IgnoredType.Of(p))
+
 			var err error
 			err = deleteCollectionFromPath(r, vocab.Inbox.IRI(p))
 			err = deleteCollectionFromPath(r, vocab.Outbox.IRI(p))
@@ -861,6 +870,9 @@ func (r *repo) loadOneFromPath(f vocab.IRI) (vocab.Item, error) {
 	}
 	if col == nil {
 		return nil, errors.NotFoundf("nothing found")
+	}
+	if vocab.IsIRI(col) {
+		return nil, errors.Conflictf("%s could not be loaded from disk", col)
 	}
 	if col.IsCollection() {
 		var result vocab.Item
@@ -1091,7 +1103,7 @@ func (r *repo) setToCache(it vocab.Item) {
 }
 
 func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
-	itPath := r.itemStoragePath(iri.GetLink())
+	itPath := r.itemStoragePath(iri)
 	it, err := r.loadItem(getObjectKey(itPath), iri, fil...)
 	_ = vocab.OnObject(it, func(ob *vocab.Object) error {
 		ob.ID = iri
