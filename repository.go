@@ -1163,14 +1163,19 @@ func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (voca
 		r.logger.Errorf("unable to load from fs: %+s", err)
 		return it, err
 	}
-	if !vocab.IsNil(it) {
-		if orderedCollectionTypes.Contains(it.GetType()) {
-			_ = vocab.OnOrderedCollection(it, postProcessOrderedItems(items))
-		} else {
-			_ = vocab.OnCollection(it, postProcessItems(items))
-		}
+	if vocab.IsNil(it) {
+		return nil, nil
+	}
+	if vocab.IsIRI(it) {
+		r.logger.Warnf("invalid collection to operate on %T: %s", it, it.GetLink())
+		return nil, nil
 	}
 
+	if orderedCollectionTypes.Contains(it.GetType()) {
+		err = vocab.OnOrderedCollection(it, postProcessOrderedItems(items))
+	} else {
+		err = vocab.OnCollection(it, postProcessItems(items))
+	}
 	return it, err
 }
 
