@@ -4,11 +4,11 @@ go 1.19
 
 require (
 	git.sr.ht/~mariusor/lw v0.0.0-20240323171419-d538df4af052
-	github.com/go-ap/activitypub v0.0.0-20240323154407-e2e30475b980
-	github.com/go-ap/cache v0.0.0-20240323154621-7d2e4a7185b6
+	github.com/go-ap/activitypub v0.0.0-20240324143732-70ec96f244e6
+	github.com/go-ap/cache v0.0.0-20240324143953-1247d54db1bc
 	github.com/go-ap/errors v0.0.0-20240304112515-6077fa9c17b0
-	github.com/go-ap/filters v0.0.0-20240324132854-cb16501b1c5a
-	github.com/go-ap/processing v0.0.0-20240324142536-574ff01c2c8f
+	github.com/go-ap/filters v0.0.0-20240324144020-fa2c80e401ec
+	github.com/go-ap/processing v0.0.0-20240324144257-a1df6e3b6bdf
 	github.com/openshift/osin v1.0.1
 	golang.org/x/crypto v0.21.0
 	golang.org/x/sys v0.18.0
@@ -16,7 +16,7 @@ require (
 
 require (
 	git.sr.ht/~mariusor/go-xsd-duration v0.0.0-20220703122237-02e73435a078 // indirect
-	github.com/go-ap/client v0.0.0-20240323154701-a45ab836e28a // indirect
+	github.com/go-ap/client v0.0.0-20240324144035-f314cf467c26 // indirect
 	github.com/go-ap/jsonld v0.0.0-20221030091449-f2a191312c73 // indirect
 	github.com/go-chi/chi/v5 v5.0.12 // indirect
 	github.com/go-fed/httpsig v1.1.0 // indirect
