@@ -254,19 +254,20 @@ func putItem(basePath string, it any) error {
 
 func putRaw(basePath string, raw []byte) error {
 	filePath := getOauthObjectKey(basePath)
-	f, err := os.Open(filePath)
-	if err != nil && os.IsNotExist(err) {
-		f, err = os.Create(filePath)
-	}
+
+	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return errors.Annotatef(err, "Unable to save data to path %s", filePath)
 	}
 	defer f.Close()
-	n, err := f.Write(raw)
-	if n != len(raw) {
-		return errors.Newf("Unable to save all data to path %s, only saved %d bytes", filePath, n)
+	wrote, err := f.Write(raw)
+	if err != nil {
+		return errors.Annotatef(err, "could not store encoded object")
 	}
-	return err
+	if wrote != len(raw) {
+		return errors.Annotatef(err, "failed writing object")
+	}
+	return nil
 }
 
 // UpdateClient
@@ -464,50 +465,19 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 		result.UserData = access.Extra
 
 		if access.Authorize != "" {
-			data, err := r.loadAuthorizeFromPath(r.oauthPath(authorizeBucket, access.Authorize))
-			if err != nil {
-				err := errors.Annotatef(err, "unable to load authorize data for current access token %s.", access.AccessToken)
-				r.logger.Errorf("Authorize code %s: %+s", access.Authorize, err)
-				return nil
+			if data, _ := r.loadAuthorizeFromPath(r.oauthPath(authorizeBucket, access.Authorize)); data != nil {
+				result.AuthorizeData = data
 			}
-			if data.ExpireAt().Before(time.Now().UTC()) {
-				err := errors.Errorf("token expired at %s.", data.ExpireAt().String())
-				r.logger.Errorf("Authorize code: %s: %+s", access.Authorize, err)
-				return nil
-			}
-			result.AuthorizeData = data
 		}
 		if access.Previous != "" {
-			_, err := r.loadFromOauthPath(accessPath, func(raw []byte) error {
-				access := acc{}
-				if err := decodeFn(raw, &access); err != nil {
-					return errors.Annotatef(err, "Unable to unmarshal access object")
-				}
-				prev := new(osin.AccessData)
-				prev.AccessToken = access.AccessToken
-				prev.RefreshToken = access.RefreshToken
-				prev.ExpiresIn = int32(access.ExpiresIn)
-				prev.Scope = access.Scope
-				prev.RedirectUri = access.RedirectURI
-				prev.CreatedAt = access.CreatedAt.UTC()
-				prev.UserData = access.Extra
-				result.AccessData = prev
-				return nil
-			})
-			if err != nil {
-				err := errors.Annotatef(err, "Unable to load previous access token for %s.", access.AccessToken)
-				r.logger.Errorf("Access code %s: %s", access.AccessToken, err)
-				return nil
+			if data, _ := r.loadAccessFromPath(r.oauthPath(accessBucket, access.Previous)); data != nil {
+				result.AccessData = data
 			}
 		}
 		if access.Client != "" {
-			data, err := r.loadClientFromPath(r.oauthClientPath(clientsBucket, access.Client))
-			if err != nil {
-				err := errors.Annotatef(err, "Unable to load client data for current access token %s.", access.AccessToken)
-				r.logger.Errorf("Authorize code %s: %s", access.AccessToken, err)
-				return nil
+			if data, _ := r.loadClientFromPath(r.oauthClientPath(clientsBucket, access.Client)); data != nil {
+				result.Client = data
 			}
-			result.Client = data
 		}
 		return nil
 	})
