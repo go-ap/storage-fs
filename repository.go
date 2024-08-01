@@ -10,7 +10,6 @@ import (
 	"encoding/pem"
 	xerrors "errors"
 	"fmt"
-	"git.sr.ht/~mariusor/lw"
 	"io/fs"
 	"math/rand"
 	"net/url"
@@ -22,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"git.sr.ht/~mariusor/lw"
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
@@ -61,7 +61,7 @@ func New(c Config) (*repo, error) {
 	b := repo{
 		path:   p,
 		cwd:    cwd,
-		logger: lw.Dev(),
+		logger: emptyLogger,
 		cache:  cache.New(c.CacheEnable),
 	}
 	if c.Logger != nil {
