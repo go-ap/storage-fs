@@ -109,7 +109,7 @@ func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	return filters.Checks(f).Run(it), nil
+	return filters.Checks(f).Paginate(it), nil
 }
 
 // Create
@@ -272,13 +272,14 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 	var col vocab.Item
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
 	if !isHiddenCollectionKey(r.itemStoragePath(colIRI)) {
-		if col, err = r.Load(colIRI); err != nil {
+		itPath := r.itemStoragePath(colIRI)
+		if col, err = r.loadItem(getObjectKey(itPath), colIRI); err != nil {
 			return err
 		}
-		ob, t := allStorageCollections.Split(colIRI)
+		parent, t := allStorageCollections.Split(colIRI)
 		if isStorageCollectionKey(string(t)) {
 			// Create the collection on the object, if it doesn't exist
-			i, err := r.loadOneFromIRI(ob)
+			i, err := r.loadFromIRI(parent, filters.WithMaxCount(1))
 			if err != nil {
 				return err
 			}
@@ -304,28 +305,18 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 
 	// we create a symlink to the persisted object in the current collection
 	err = onCollection(r, col, it, func(p string) error {
-		err := mkDirIfNotExists(p)
-		if err != nil {
+		if err := mkDirIfNotExists(p); err != nil {
 			return errors.Annotatef(err, "Unable to create collection folder %s", p)
 		}
 		// NOTE(marius): if 'it' IRI belongs to the 'col' collection we can skip symlinking it
 		if it.GetLink().Contains(col.GetLink(), true) {
 			return nil
 		}
-		inCollection := false
-		if dirInfo, err := os.ReadDir(p); err == nil {
-			for _, di := range dirInfo {
-				fi, err := di.Info()
-				if err != nil {
-					continue
-				}
-				if fi.Name() == fullLink && (isSymLink(fi) || isHardLink(fi)) {
-					inCollection = true
-				}
+
+		if fi, _ := os.Stat(fullLink); fi != nil {
+			if isSymLink(fi) || isHardLink(fi) {
+				return nil
 			}
-		}
-		if inCollection {
-			return nil
 		}
 
 		if itOriginalPath, err = filepath.Abs(itOriginalPath); err != nil {
@@ -346,7 +337,11 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		}
 		// NOTE(marius): we can't use hard links as we're linking to folders :(
 		// This would have been tremendously easier (as in, not having to compute paths) with hard-links.
-		return os.Symlink(itOriginalPath, fullLink)
+		if err = os.Symlink(itOriginalPath, fullLink); os.IsExist(err) {
+			_ = os.Remove(fullLink)
+			err = os.Symlink(itOriginalPath, fullLink)
+		}
+		return err
 	})
 	if err != nil {
 		return errors.Annotatef(err, "unable to symlink object into collection")
@@ -843,8 +838,7 @@ func onCollection(r *repo, col vocab.Item, it vocab.Item, fn func(p string) erro
 	}
 
 	itPath := r.itemStoragePath(col.GetLink())
-	err := fn(itPath)
-	if err != nil {
+	if err := fn(itPath); err != nil {
 		if os.IsExist(err) {
 			return errors.NewConflict(err, "%s already exists in collection %s", it.GetID(), itPath)
 		}
@@ -923,7 +917,8 @@ func dereferenceItemAndFilter(r *repo, ob vocab.Item, fil ...filters.Check) (voc
 	}
 
 	if vocab.IsIRI(ob) {
-		o, err := r.Load(ob.GetLink())
+		itPath := r.itemStoragePath(ob.GetLink())
+		o, err := r.loadItem(getObjectKey(itPath), ob.GetLink(), fil...)
 		if err != nil {
 			return ob, nil
 		}
@@ -1113,7 +1108,7 @@ func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Check) (vocab.It
 	}
 
 	r.setToCache(it)
-	return it, nil
+	return filters.Checks(fil).Filter(it), nil
 }
 
 func (r *repo) setToCache(it vocab.Item) {
@@ -1160,7 +1155,7 @@ func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (voca
 		iri = iriFromPath(p)
 		ob, err := r.loadItem(getObjectKey(p), iri, fil...)
 		if err != nil {
-			r.logger.Warnf("unable to load %s: %+s", p, err)
+			//r.logger.Warnf("unable to load %s: %+s", p, err)
 			return nil
 		}
 		if !vocab.IsNil(ob) {
