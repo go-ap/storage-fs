@@ -26,6 +26,7 @@ import (
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
 	"github.com/go-ap/filters"
+	"github.com/go-ap/filters/index"
 	"github.com/go-ap/processing"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -40,6 +41,7 @@ var emptyLogger = lw.Dev()
 type Config struct {
 	Path        string
 	CacheEnable bool
+	UseIndex    bool
 	Logger      lw.Logger
 }
 
@@ -67,6 +69,9 @@ func New(c Config) (*repo, error) {
 	if c.Logger != nil {
 		b.logger = c.Logger
 	}
+	if c.UseIndex {
+		b.index = index.Full()
+	}
 	return &b, nil
 }
 
@@ -74,6 +79,7 @@ type repo struct {
 	path   string
 	cwd    string
 	opened bool
+	index  *index.Index
 	cache  cache.CanStore
 	logger lw.Logger
 }
@@ -83,13 +89,18 @@ func (r *repo) Open() error {
 	if r.opened {
 		return nil
 	}
-	return os.Chdir(r.path)
+	if err := os.Chdir(r.path); err != nil {
+		return err
+	}
+	r.opened = true
+	return nil
 }
 
 func (r *repo) close() error {
-	if r.opened {
+	if !r.opened {
 		return nil
 	}
+	r.opened = false
 	return os.Chdir(r.cwd)
 }
 
@@ -105,6 +116,8 @@ func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 	}
 	defer r.Close()
 
+	_ = loadIndex(r)
+
 	it, err := r.loadFromIRI(i, f...)
 	if err != nil {
 		return nil, err
@@ -114,6 +127,14 @@ func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 
 // Create
 func (r *repo) Create(col vocab.CollectionInterface) (vocab.CollectionInterface, error) {
+	err := r.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+
+	_ = loadIndex(r)
+
 	if vocab.IsNil(col) {
 		return col, errors.Newf("Unable to operate on nil element")
 	}
@@ -130,6 +151,9 @@ func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
 		return nil, err
 	}
 	defer r.Close()
+
+	_ = loadIndex(r)
+
 	if it, err = save(r, it); err == nil {
 		op := "Updated"
 		id := it.GetID()
@@ -149,6 +173,8 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
+	_ = loadIndex(r)
+
 	ob, t := vocab.Split(col)
 	var link vocab.IRI
 	if filters.ValidCollection(t) {
@@ -158,7 +184,7 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 			return err
 		}
 		if p, ok := t.AddTo(i); ok {
-			save(r, i)
+			_, _ = save(r, i)
 			link = p
 		} else {
 			link = t.IRI(i)
@@ -267,6 +293,8 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 	if err != nil {
 		return err
 	}
+
+	_ = loadIndex(r)
 
 	var link vocab.IRI
 	var col vocab.Item
@@ -638,7 +666,7 @@ func createCollections(r *repo, it vocab.Item) error {
 		return nil
 	}
 	if vocab.ActorTypes.Contains(it.GetType()) {
-		vocab.OnActor(it, func(p *vocab.Actor) error {
+		_ = vocab.OnActor(it, func(p *vocab.Actor) error {
 			p.Inbox, _ = createCollectionInPath(r, p.Inbox)
 			p.Outbox, _ = createCollectionInPath(r, p.Outbox)
 			p.Followers, _ = createCollectionInPath(r, p.Followers)
@@ -769,6 +797,11 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	if err := createCollections(r, it); err != nil {
 		return it, errors.Annotatef(err, "could not create object's collections")
 	}
+
+	defer func() {
+		_ = saveIndex(r)
+	}()
+
 	writeSingleObjFn := func(it vocab.Item) (vocab.Item, error) {
 		itPath := r.itemStoragePath(it.GetLink())
 		_ = mkDirIfNotExists(itPath)
@@ -822,6 +855,9 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 			return nil
 		})
 		return it, err
+	}
+	if err := r.addToIndex(it); err != nil {
+		r.logger.Errorf("unable to add item %s to index: %s", it.GetLink(), err)
 	}
 	return writeSingleObjFn(it)
 }
@@ -954,7 +990,7 @@ func loadFilteredPropsForIntransitiveActivity(r *repo, fil ...filters.Check) fun
 		var err error
 		if !vocab.IsNil(a.Actor) {
 			if a.ID.Equals(a.Actor.GetLink(), false) {
-				r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
+				//r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
 				return errors.BadGatewayf("invalid activity with id %s, referencing itself as an actor: %s", a.ID, a.Actor.GetLink())
 			}
 			if a.Actor, err = dereferenceItemAndFilter(r, a.Actor); err != nil {
@@ -963,7 +999,7 @@ func loadFilteredPropsForIntransitiveActivity(r *repo, fil ...filters.Check) fun
 		}
 		if !vocab.IsNil(a.Target) {
 			if a.ID.Equals(a.Target.GetLink(), false) {
-				r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original object. (%s)", a.Type, a.ID)
+				//r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original object. (%s)", a.Type, a.ID)
 				return errors.BadGatewayf("invalid activity with id %s, referencing itself as a target: %s", a.ID, a.Target.GetLink())
 			}
 			if a.Target, err = dereferenceItemAndFilter(r, a.Target); err != nil {
@@ -1127,12 +1163,12 @@ func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (voca
 	})
 	if err != nil || vocab.IsNil(it) {
 		if !isHiddenCollectionKey(itPath) {
-			r.logger.Debugf("unable to load collection object for %s: %s", iri, err.Error())
+			r.logger.Debugf("unable to load collection object for %s: %s", iri, err)
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "unable to load collection")
 		}
 		// NOTE(marius): this creates blocked/ignored collections if they don't exist as dumb folders
 		if err = mkDirIfNotExists(itPath); err != nil {
-			r.logger.Warnf("unable to create collection %s: %s", iri, err.Error())
+			r.logger.Warnf("unable to create collection %s: %s", iri, err)
 		}
 	}
 	items := make(vocab.ItemCollection, 0)
