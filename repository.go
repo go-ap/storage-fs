@@ -26,7 +26,6 @@ import (
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
 	"github.com/go-ap/filters"
-	"github.com/go-ap/filters/index"
 	"github.com/go-ap/processing"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -70,7 +69,7 @@ func New(c Config) (*repo, error) {
 		b.logger = c.Logger
 	}
 	if c.UseIndex {
-		b.index = index.Full()
+		b.index = newBitmap()
 	}
 	return &b, nil
 }
@@ -79,7 +78,7 @@ type repo struct {
 	path   string
 	cwd    string
 	opened bool
-	index  *index.Index
+	index  *bitmaps
 	cache  cache.CanStore
 	logger lw.Logger
 }
@@ -833,6 +832,9 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 		if wrote != len(entryBytes) {
 			return it, errors.Annotatef(err, "failed writing object")
 		}
+		if err := r.addToIndex(it, itPath); err != nil {
+			r.logger.Errorf("unable to add item %s to index: %s", it.GetLink(), err)
+		}
 
 		r.setToCache(it)
 		return it, nil
@@ -855,9 +857,6 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 			return nil
 		})
 		return it, err
-	}
-	if err := r.addToIndex(it); err != nil {
-		r.logger.Errorf("unable to add item %s to index: %s", it.GetLink(), err)
 	}
 	return writeSingleObjFn(it)
 }
@@ -1093,6 +1092,8 @@ func loadItemFromPath(p string) (vocab.Item, error) {
 	return it, nil
 }
 
+// loadItem
+// the p path is expected to contain the __raw file name
 func (r *repo) loadItem(p string, iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
 	var it vocab.Item
 	if iri != "" {
@@ -1154,32 +1155,34 @@ func (r *repo) setToCache(it vocab.Item) {
 	r.cache.Store(it.GetLink(), it)
 }
 
-func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
-	itPath := r.itemStoragePath(iri)
-	it, err := r.loadItem(getObjectKey(itPath), iri, fil...)
+// loadCollectionFromPath
+func (r *repo) loadCollectionFromPath(itPath string, fil ...filters.Check) (vocab.Item, error) {
+	iri := r.iriFromPath(itPath)
+	it, err := r.loadItem(itPath, iri, fil...)
 	_ = vocab.OnObject(it, func(ob *vocab.Object) error {
 		ob.ID = iri
 		return nil
 	})
+	dirPath := filepath.Dir(itPath)
 	if err != nil || vocab.IsNil(it) {
-		if !isHiddenCollectionKey(itPath) {
+		if !isHiddenCollectionKey(dirPath) {
 			r.logger.Debugf("unable to load collection object for %s: %s", iri, err)
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "unable to load collection")
 		}
 		// NOTE(marius): this creates blocked/ignored collections if they don't exist as dumb folders
-		if err = mkDirIfNotExists(itPath); err != nil {
+		if err = mkDirIfNotExists(dirPath); err != nil {
 			r.logger.Warnf("unable to create collection %s: %s", iri, err)
 		}
 	}
 	items := make(vocab.ItemCollection, 0)
-	err = filepath.WalkDir(itPath, func(p string, info os.DirEntry, err error) error {
+	err = filepath.WalkDir(dirPath, func(p string, info os.DirEntry, err error) error {
 		if err != nil && os.IsNotExist(err) {
 			if isStorageCollectionKey(p) {
 				return errors.NewNotFound(asPathErr(err, r.path), "not found")
 			}
 			return nil
 		}
-		dirPath, _ := filepath.Split(p)
+		dirPath, _ = filepath.Split(p)
 		dir := strings.TrimRight(dirPath, "/")
 		if dir != itPath || filepath.Base(p) == objectKey {
 			return nil
@@ -1191,7 +1194,7 @@ func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (voca
 		iri = iriFromPath(p)
 		ob, err := r.loadItem(getObjectKey(p), iri, fil...)
 		if err != nil {
-			//r.logger.Warnf("unable to load %s: %+s", p, err)
+			r.logger.Warnf("unable to load %s: %+s", p, err)
 			return nil
 		}
 		if !vocab.IsNil(ob) {
@@ -1217,6 +1220,11 @@ func (r *repo) loadCollectionFromPath(iri vocab.IRI, fil ...filters.Check) (voca
 		err = vocab.OnCollection(it, postProcessItems(items))
 	}
 	return it, err
+}
+
+func (r *repo) loadCollectionFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
+	itPath := r.itemStoragePath(iri)
+	return r.loadCollectionFromPath(getObjectKey(itPath), fil...)
 }
 
 func postProcessItems(items vocab.ItemCollection) vocab.WithCollectionFn {
@@ -1245,7 +1253,7 @@ func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, err
 	itPath := r.itemStoragePath(iri)
 
 	if isStorageCollectionKey(itPath) {
-		return r.loadCollectionFromPath(iri, fil...)
+		return r.loadCollectionFromPath(getObjectKey(itPath), fil...)
 	} else {
 		if it, err = r.loadItem(getObjectKey(itPath), iri, fil...); err != nil {
 			r.logger.Tracef("unable to load %s: %s", iri, err.Error())
