@@ -115,8 +115,6 @@ func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 	}
 	defer r.Close()
 
-	_ = loadIndex(r)
-
 	it, err := r.loadFromIRI(i, f...)
 	if err != nil {
 		return nil, err
@@ -131,8 +129,6 @@ func (r *repo) Create(col vocab.CollectionInterface) (vocab.CollectionInterface,
 		return nil, err
 	}
 	defer r.Close()
-
-	_ = loadIndex(r)
 
 	if vocab.IsNil(col) {
 		return col, errors.Newf("Unable to operate on nil element")
@@ -150,8 +146,6 @@ func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
 		return nil, err
 	}
 	defer r.Close()
-
-	_ = loadIndex(r)
 
 	if it, err = save(r, it); err == nil {
 		op := "Updated"
@@ -171,8 +165,6 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 	if err != nil {
 		return err
 	}
-
-	_ = loadIndex(r)
 
 	ob, t := vocab.Split(col)
 	var link vocab.IRI
@@ -214,6 +206,9 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 	})
 	if err != nil {
 		return err
+	}
+	if err = r.removeFromCollectionIndex(col, it); err != nil && !errors.Is(err, cacheDisabled) {
+		r.logger.Errorf("unable to remote item %s from collection index: %s", it.GetLink(), err)
 	}
 	r.removeFromCache(it.GetLink())
 	return nil
@@ -293,8 +288,6 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
-	_ = loadIndex(r)
-
 	var link vocab.IRI
 	var col vocab.Item
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
@@ -311,7 +304,7 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 				return err
 			}
 			if p, ok := t.AddTo(i); ok {
-				save(r, i)
+				_, _ = save(r, i)
 				link = p
 			} else {
 				link = t.IRI(i)
@@ -388,7 +381,13 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		})
 	}
 	_, err = save(r, col)
-	return err
+	if err != nil {
+		return err
+	}
+	if err = r.addToCollectionIndex(col, it); err != nil && !errors.IsNotImplemented(err) {
+		r.logger.Errorf("unable to add item %s to collection index: %s", it.GetLink(), err)
+	}
+	return nil
 }
 
 // Delete
@@ -796,6 +795,7 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	if err := createCollections(r, it); err != nil {
 		return it, errors.Annotatef(err, "could not create object's collections")
 	}
+	_ = loadIndex(r)
 
 	defer func() {
 		_ = saveIndex(r)
@@ -832,7 +832,7 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 		if wrote != len(entryBytes) {
 			return it, errors.Annotatef(err, "failed writing object")
 		}
-		if err := r.addToIndex(it, itPath); err != nil {
+		if err = r.addToObjectIndex(it, itPath); err != nil && !errors.IsNotImplemented(err) {
 			r.logger.Errorf("unable to add item %s to index: %s", it.GetLink(), err)
 		}
 
@@ -1156,52 +1156,58 @@ func (r *repo) setToCache(it vocab.Item) {
 }
 
 // loadCollectionFromPath
-func (r *repo) loadCollectionFromPath(itPath string, fil ...filters.Check) (vocab.Item, error) {
-	iri := r.iriFromPath(itPath)
+func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
+	_ = loadIndex(r)
+
 	it, err := r.loadItem(itPath, iri, fil...)
 	_ = vocab.OnObject(it, func(ob *vocab.Object) error {
 		ob.ID = iri
 		return nil
 	})
-	dirPath := filepath.Dir(itPath)
+	colDirPath := filepath.Dir(itPath)
 	if err != nil || vocab.IsNil(it) {
-		if !isHiddenCollectionKey(dirPath) {
-			r.logger.Debugf("unable to load collection object for %s: %s", iri, err)
+		if !isHiddenCollectionKey(colDirPath) {
+			//r.logger.Debugf("unable to load collection object for %s: %s", iri, err)
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "unable to load collection")
 		}
 		// NOTE(marius): this creates blocked/ignored collections if they don't exist as dumb folders
-		if err = mkDirIfNotExists(dirPath); err != nil {
+		if err = mkDirIfNotExists(colDirPath); err != nil {
 			r.logger.Warnf("unable to create collection %s: %s", iri, err)
+			return nil, err
 		}
 	}
-	items := make(vocab.ItemCollection, 0)
-	err = filepath.WalkDir(dirPath, func(p string, info os.DirEntry, err error) error {
-		if err != nil && os.IsNotExist(err) {
-			if isStorageCollectionKey(p) {
-				return errors.NewNotFound(asPathErr(err, r.path), "not found")
+
+	var items vocab.ItemCollection
+	items, _ = r.searchIndex(it, fil...)
+	if items == nil {
+		items = make(vocab.ItemCollection, 0)
+
+		err = filepath.WalkDir(colDirPath, func(p string, info os.DirEntry, err error) error {
+			if err != nil && os.IsNotExist(err) {
+				if isStorageCollectionKey(p) {
+					return errors.NewNotFound(asPathErr(err, r.path), "not found")
+				}
+				return nil
+			}
+
+			dir := p
+			diff := strings.TrimPrefix(dir, colDirPath)
+			if strings.Count(diff, "/") != 1 {
+				// when encountering the raw file that does not match the first level under the collection path, we skip
+				return nil
+			}
+
+			ob, err := r.loadItem(getObjectKey(p), "", fil...)
+			if err != nil {
+				r.logger.Warnf("unable to load %s: %+s", p, err)
+				return nil
+			}
+			if !vocab.IsNil(ob) {
+				items = append(items, ob)
 			}
 			return nil
-		}
-		dirPath, _ = filepath.Split(p)
-		dir := strings.TrimRight(dirPath, "/")
-		if dir != itPath || filepath.Base(p) == objectKey {
-			return nil
-		}
-
-		iriFromPath := func(p string) vocab.IRI {
-			return vocab.IRI(fmt.Sprintf("https://%s", strings.Replace(p, r.path, "", 1)))
-		}
-		iri = iriFromPath(p)
-		ob, err := r.loadItem(getObjectKey(p), iri, fil...)
-		if err != nil {
-			r.logger.Warnf("unable to load %s: %+s", p, err)
-			return nil
-		}
-		if !vocab.IsNil(ob) {
-			items = append(items, ob)
-		}
-		return nil
-	})
+		})
+	}
 	if err != nil {
 		r.logger.Errorf("unable to load from fs: %+s", err)
 		return it, err
@@ -1220,11 +1226,6 @@ func (r *repo) loadCollectionFromPath(itPath string, fil ...filters.Check) (voca
 		err = vocab.OnCollection(it, postProcessItems(items))
 	}
 	return it, err
-}
-
-func (r *repo) loadCollectionFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
-	itPath := r.itemStoragePath(iri)
-	return r.loadCollectionFromPath(getObjectKey(itPath), fil...)
 }
 
 func postProcessItems(items vocab.ItemCollection) vocab.WithCollectionFn {
@@ -1253,7 +1254,7 @@ func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, err
 	itPath := r.itemStoragePath(iri)
 
 	if isStorageCollectionKey(itPath) {
-		return r.loadCollectionFromPath(getObjectKey(itPath), fil...)
+		return r.loadCollectionFromPath(getObjectKey(itPath), iri, fil...)
 	} else {
 		if it, err = r.loadItem(getObjectKey(itPath), iri, fil...); err != nil {
 			r.logger.Tracef("unable to load %s: %s", iri, err.Error())

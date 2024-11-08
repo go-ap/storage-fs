@@ -16,4 +16,7 @@ func Bootstrap(_ Config) error {
 
 func (r *repo) Reset() {
 	r.cache = cache.New(true)
+	if r.index != nil {
+		r.index = newBitmap()
+	}
 }

@@ -4,6 +4,7 @@ go 1.23
 
 require (
 	git.sr.ht/~mariusor/lw v0.0.0-20240906100438-00d2184b2120
+	github.com/RoaringBitmap/roaring v1.9.4
 	github.com/go-ap/activitypub v0.0.0-20241104140659-be99a725f9d5
 	github.com/go-ap/cache v0.0.0-20241104141048-912618952f30
 	github.com/go-ap/errors v0.0.0-20240910140019-1e9d33cc1568
@@ -18,7 +19,6 @@ require (
 	git.sr.ht/~mariusor/cache v0.0.0-20241026131931-1ae5432a2760 // indirect
 	git.sr.ht/~mariusor/go-xsd-duration v0.0.0-20220703122237-02e73435a078 // indirect
 	git.sr.ht/~mariusor/ssm v0.0.0-20240811085540-34f24cac52b7 // indirect
-	github.com/RoaringBitmap/roaring v1.9.4 // indirect
 	github.com/bits-and-blooms/bitset v1.14.3 // indirect
 	github.com/go-ap/client v0.0.0-20241104140838-929b90e84e8a // indirect
 	github.com/go-ap/jsonld v0.0.0-20221030091449-f2a191312c73 // indirect
