@@ -90,8 +90,7 @@ func (r *repo) searchIndex(col vocab.Item, ff ...filters.Check) (vocab.ItemColle
 	result := make(vocab.ItemCollection, 0, bmp.GetCardinality())
 	colBmp.Iterate(func(x uint32) bool {
 		if ipath, ok := i.ref[x]; ok {
-			fullPath := getObjectKey(filepath.Join(r.path, ipath))
-			it, err := r.loadItem(fullPath, r.iriFromPath(fullPath))
+			it, err := r.loadItemFromPath(getObjectKey(filepath.Join(r.path, ipath)))
 			if err != nil {
 				return true
 			}
@@ -378,7 +377,7 @@ func (r *repo) Reindex() (err error) {
 				return nil
 			})
 		} else {
-			it, err = r.loadItem(filepath.Join(r.path, path), iri)
+			it, err = r.loadItemFromPath(filepath.Join(r.path, path))
 		}
 		if err != nil || vocab.IsNil(it) {
 			return nil
