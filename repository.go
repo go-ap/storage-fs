@@ -1120,12 +1120,14 @@ func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, err
 		return it, nil
 	}
 
-	it = dereferencePropertiesByType(r, it, fil...)
-	if it = filters.Checks(fil).Filter(it); it == nil {
-		return nil, nil
-	}
-	if !filters.All(filters.CursorChecks(fil...)...).Apply(it) {
-		return nil, nil
+	if len(fil) > 0 {
+		it = dereferencePropertiesByType(r, it, fil...)
+		if it = filters.Checks(fil).Filter(it); it == nil {
+			return nil, nil
+		}
+		if !filters.All(filters.CursorChecks(fil...)...).Apply(it) {
+			return nil, nil
+		}
 	}
 	if cachedIt == nil {
 		r.setToCache(it)
@@ -1178,6 +1180,9 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 				// when encountering the raw file that does not match the first level under the collection path, we skip
 				return nil
 			}
+			if fn := filepath.Base(p); fn == objectKey || fn == metaDataKey || fn == _indexDirName {
+				return nil
+			}
 
 			ob, err := r.loadItemFromPath(getObjectKey(p))
 			if err != nil {
@@ -1200,8 +1205,11 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 	} else {
 		err = vocab.OnCollection(it, buildCollection(items))
 	}
+	if len(fil) > 0 {
+		return PaginateCollection(r, it, fil...), err
+	}
 
-	return PaginateCollection(r, it, fil...), err
+	return it, err
 }
 
 func iriWithQuery(i vocab.IRI, q url.Values) vocab.IRI {
@@ -1233,7 +1241,7 @@ func PaginateCollection(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item
 		}
 		total = c.Count()
 
-		items, _, next = dereferencePropertiesForCollection(r, items, fil...)
+		items = dereferencePropertiesForCollection(r, items, fil...)
 		return nil
 	})
 
@@ -1296,15 +1304,12 @@ func dereferencePropertiesByType(r *repo, it vocab.Item, fil ...filters.Check) v
 	return it
 }
 
-func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil ...filters.Check) (vocab.ItemCollection, vocab.Item, vocab.Item) {
-	var prev vocab.Item
-	var next vocab.Item
-
+func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil ...filters.Check) vocab.ItemCollection {
 	sort.Slice(items, func(i, j int) bool {
 		return vocab.ItemOrderTimestamp(items[i], items[j])
 	})
 
-	enhanced := make(vocab.ItemCollection, 0, len(items)/2)
+	enhanced := make(vocab.ItemCollection, 0)
 	for _, it := range items {
 		it = dereferencePropertiesByType(r, it, fil...)
 		if it = filters.Checks(fil).Filter(it); it == nil {
@@ -1317,13 +1322,9 @@ func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil
 			continue
 		}
 		_ = enhanced.Append(it)
-		next = it
-		if prev == nil {
-			prev = it
-		}
 	}
 
-	return enhanced, prev, next
+	return enhanced
 }
 
 func buildCollection(items vocab.ItemCollection) vocab.WithCollectionFn {

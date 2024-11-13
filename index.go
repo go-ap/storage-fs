@@ -90,7 +90,7 @@ func (r *repo) searchIndex(col vocab.Item, ff ...filters.Check) (vocab.ItemColle
 	result := make(vocab.ItemCollection, 0, bmp.GetCardinality())
 	colBmp.Iterate(func(x uint32) bool {
 		if ipath, ok := i.ref[x]; ok {
-			it, err := r.loadItemFromPath(getObjectKey(filepath.Join(r.path, ipath)))
+			it, err := loadItemFromPath(getObjectKey(filepath.Join(r.path, ipath)))
 			if err != nil {
 				return true
 			}
