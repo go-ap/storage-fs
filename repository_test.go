@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -117,9 +118,12 @@ func Test_repo_Open(t *testing.T) {
 }
 
 func Test_repo_Load(t *testing.T) {
+	basePath, _ := getwd()
+
+	mocksPath := filepath.Join(basePath, "mocks")
 	mocks := make(map[vocab.IRI]vocab.Item)
-	mocksPath := filepath.Join(testCWD, "mocks")
-	err := filepath.WalkDir(mocksPath, func(path string, d fs.DirEntry, err error) error {
+	inbox := make([]vocab.Item, 0, 100)
+	_ = filepath.WalkDir(mocksPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -127,68 +131,120 @@ func Test_repo_Load(t *testing.T) {
 			return nil
 		}
 		if filepath.Base(path) == objectKey {
-			iri := vocab.IRI(strings.Replace(strings.Replace(path, mocksPath, "https:/", 1), objectKey, "", 1))
+			u := strings.TrimSuffix(strings.Replace(path, mocksPath, "https:/", 1), "/"+objectKey)
 			j, _ := os.ReadFile(path)
 			m, _ := vocab.UnmarshalJSON(j)
-			mocks[iri] = m
+			mocks[vocab.IRI(u)] = m
+			if strings.HasSuffix(filepath.Dir(u), "inbox") {
+				inbox = append(inbox, m)
+			}
 		}
 		return nil
 	})
-	if err != nil {
-		t.Errorf("%s", err)
-		return
-	}
 
+	sort.Slice(inbox, func(i, j int) bool {
+		return vocab.ItemOrderTimestamp(inbox[i], inbox[j])
+	})
 	tests := []struct {
 		name    string
-		fields  fields
 		args    vocab.IRI
 		want    vocab.Item
 		wantErr error
 	}{
 		{
 			name:    "empty",
-			fields:  fields{},
 			args:    "",
 			want:    nil,
-			wantErr: error(unix.ENOENT),
+			wantErr: errors.NotFoundf("file not found"),
 		},
 		{
-			name: "empty iri gives us not found",
-			fields: fields{
-				path: mocksPath,
-			},
+			name:    "empty iri gives us not found",
 			args:    "",
 			want:    nil,
 			wantErr: errors.NotFoundf("file not found"),
 		},
 		{
 			name: "root iri gives us the root",
-			fields: fields{
-				path: mocksPath,
-			},
 			args: "https://example.com",
 			want: vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"},
 		},
 		{
-			name: "invalid iri gives 404",
-			fields: fields{
-				path: mocksPath,
-			},
+			name:    "invalid iri gives 404",
 			args:    "https://example.com/dsad",
 			want:    nil,
 			wantErr: os.ErrNotExist,
 		},
+		{
+			name: "example.com/inbox",
+			args: "https://example.com/inbox",
+			want: vocab.OrderedCollection{
+				ID:           "https://example.com/inbox",
+				Type:         vocab.OrderedCollectionType,
+				OrderedItems: inbox,
+				TotalItems:   100,
+			},
+		},
+		{
+			name: "example.com/inbox/0",
+			args: "https://example.com/inbox/0",
+			want: vocab.Relationship{
+				Type: vocab.RelationshipType,
+				ID:   "https://example.com/inbox/0",
+				Name: vocab.NaturalLanguageValuesNew(vocab.DefaultLangRef("Nam ut odio id risus laoreet scelerisque.")),
+				Content: vocab.NaturalLanguageValuesNew(
+					vocab.DefaultLangRef(
+						"Ut lacinia ligula a bibendum pulvinar.\nNulla nec enim in velit iaculis elementum sit amet a nibh.\n" +
+							"Quisque ac dolor tellus.\nMaecenas vestibulum odio at pellentesque gravida.\n" +
+							"In velit libero, ultrices nec quam at, lacinia congue purus.\nSed quis turpis ut sapien venenatis cursus.\n" +
+							"Nullam turpis turpis, malesuada non accumsan vitae, congue ac justo.\nSed est elit, facilisis eu malesuada non, mattis nec risus.\n" +
+							"Nulla facilisi.\nNam ut odio id risus laoreet scelerisque.\nPellentesque varius at dui nec rutrum.\n" +
+							"Nam ut odio id risus laoreet scelerisque.\nLorem ipsum dolor sit amet, consectetur adipiscing elit.\n" +
+							"Lorem ipsum dolor sit amet, consectetur adipiscing elit.\nIn velit libero, ultrices nec quam at, lacinia congue purus.\n" +
+							"Cras sit amet porta libero.\nNunc sollicitudin ut orci vel bibendum.\nVivamus eget maximus quam, non dignissim sapien.\n" +
+							"Vivamus eget maximus quam, non dignissim sapien.\nAliquam gravida gravida urna ac ornare.\n",
+					),
+				),
+			},
+		},
+		{
+			name: "example.com/inbox/99",
+			args: "https://example.com/inbox/99",
+			want: vocab.Profile{
+				Type: vocab.ProfileType,
+				ID:   "https://example.com/inbox/99",
+				Name: vocab.NaturalLanguageValuesNew(vocab.DefaultLangRef("Ut lacinia ligula a bibendum pulvinar.")),
+				Content: vocab.NaturalLanguageValuesNew(vocab.DefaultLangRef(
+					`Sed metus dolor, vehicula ut cursus luctus, pellentesque a sapien.
+Nulla nec enim in velit iaculis elementum sit amet a nibh.
+Maecenas vestibulum odio at pellentesque gravida.
+Fusce sit amet eros in lacus porta vehicula.
+Donec quis tempus eros, ut bibendum nibh.
+Cras elementum leo lectus, at condimentum sapien ornare ac.
+Phasellus sit amet aliquam quam.
+Sed quam ante, feugiat id lobortis eget, dictum a ante.
+Donec accumsan pulvinar risus, eu ultrices est volutpat lobortis.
+Nulla facilisi.
+Suspendisse potenti.
+Cras elementum leo lectus, at condimentum sapien ornare ac.
+Nulla nec enim in velit iaculis elementum sit amet a nibh.
+Phasellus blandit odio in pretium pretium.
+Donec quis tempus eros, ut bibendum nibh.
+Sed est elit, facilisis eu malesuada non, mattis nec risus.
+Nunc sollicitudin ut orci vel bibendum.
+Nulla facilisi.
+Quisque lorem elit, scelerisque nec commodo ac, maximus nec neque.
+Nunc sollicitudin ut orci vel bibendum.
+Maecenas vestibulum odio at pellentesque gravida.
+Aliquam gravida gravida urna ac ornare.
+Mauris at erat accumsan, aliquet purus et, egestas elit.
+`,
+				)),
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.fields.path,
-				cwd:    tt.fields.cwd,
-				opened: tt.fields.opened,
-				cache:  tt.fields.cache,
-				logger: lw.Dev(),
-			}
+			r := &repo{path: mocksPath, opened: true}
 			got, err := r.Load(tt.args)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
@@ -203,24 +259,21 @@ func Test_repo_Load(t *testing.T) {
 
 func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
 	return &vocab.OrderedCollection{
-		ID:   id,
-		Type: vocab.OrderedCollectionType,
+		ID:           id,
+		Type:         vocab.OrderedCollectionType,
+		OrderedItems: make(vocab.ItemCollection, 0),
 	}
 }
 
 func Test_repo_createCollection(t *testing.T) {
 	tests := []struct {
 		name     string
-		fields   fields
 		iri      vocab.IRI
 		expected vocab.CollectionInterface
 		wantErr  bool
 	}{
 		{
-			name: "example.com/replies",
-			fields: fields{
-				opened: false,
-			},
+			name:     "example.com/replies",
 			iri:      "https://example.com/replies",
 			expected: expectedCol("https://example.com/replies"),
 			wantErr:  false,
@@ -230,8 +283,7 @@ func Test_repo_createCollection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &repo{
 				path:   t.TempDir(),
-				cwd:    tt.fields.cwd,
-				opened: tt.fields.opened,
+				opened: false,
 				cache:  cache.New(false),
 				logger: lw.Dev(),
 			}

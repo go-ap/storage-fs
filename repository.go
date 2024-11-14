@@ -1356,7 +1356,6 @@ func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, err
 		return r.loadCollectionFromPath(getObjectKey(itPath), iri, fil...)
 	} else {
 		if it, err = r.loadItemFromPath(getObjectKey(itPath), fil...); err != nil {
-			r.logger.Tracef("unable to load %s: %s", iri, err.Error())
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
 		if vocab.IsNil(it) {

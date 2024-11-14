@@ -1,0 +1,1 @@
+{"id":"https://example.com/inbox/2","type":"Create","object":{"id":"https://https:/example.com/inbox/2/object","type":"Tombstone"},"actor":{"id":"https://https:/example.com/Ross","type":"Person","preferredUsername":"Ross"}}
