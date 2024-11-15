@@ -1206,7 +1206,7 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 		err = vocab.OnCollection(it, buildCollection(items))
 	}
 	if len(fil) > 0 {
-		return PaginateCollection(r, it, fil...), err
+		return paginateCollection(r, it, fil...), err
 	}
 
 	return it, err
@@ -1222,7 +1222,7 @@ func iriWithQuery(i vocab.IRI, q url.Values) vocab.IRI {
 	return vocab.IRI(u.String())
 }
 
-func PaginateCollection(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item {
+func paginateCollection(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item {
 	if vocab.IsNil(it) || !it.IsCollection() {
 		return it
 	}
@@ -1247,6 +1247,24 @@ func PaginateCollection(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item
 
 	it, _, _ = filters.CursorFromItem(it, filters.CursorChecks(fil...)...)
 	switch it.GetType() {
+	case vocab.CollectionType:
+		_ = vocab.OnCollection(it, func(c *vocab.Collection) error {
+			c.Items = items
+			c.TotalItems = total
+			if next != nil && !next.GetLink().Equals(last, true) {
+				c.First = iriWithQuery(it.GetLink(), url.Values(filters.NextPage(next)))
+			}
+			return nil
+		})
+	case vocab.OrderedCollectionType:
+		_ = vocab.OnOrderedCollection(it, func(c *vocab.OrderedCollection) error {
+			c.OrderedItems = items
+			c.TotalItems = total
+			if next != nil && !next.GetLink().Equals(last, true) {
+				c.First = iriWithQuery(it.GetLink(), url.Values(filters.NextPage(next)))
+			}
+			return nil
+		})
 	case vocab.OrderedCollectionPageType:
 		_ = vocab.OnOrderedCollectionPage(it, func(c *vocab.OrderedCollectionPage) error {
 			c.OrderedItems = items

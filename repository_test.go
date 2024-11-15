@@ -12,6 +12,7 @@ import (
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
+	"github.com/go-ap/filters"
 	"golang.org/x/sys/unix"
 )
 
@@ -117,6 +118,11 @@ func Test_repo_Open(t *testing.T) {
 	}
 }
 
+func filter(items vocab.ItemCollection, fil ...filters.Check) vocab.ItemCollection {
+	result, _ := vocab.ToItemCollection(filters.Checks(fil).Run(items))
+	return *result
+}
+
 func Test_repo_Load(t *testing.T) {
 	basePath, _ := getwd()
 
@@ -145,38 +151,42 @@ func Test_repo_Load(t *testing.T) {
 	sort.Slice(inbox, func(i, j int) bool {
 		return vocab.ItemOrderTimestamp(inbox[i], inbox[j])
 	})
+	type args struct {
+		iri vocab.IRI
+		fil filters.Checks
+	}
 	tests := []struct {
 		name    string
-		args    vocab.IRI
+		args    args
 		want    vocab.Item
 		wantErr error
 	}{
 		{
 			name:    "empty",
-			args:    "",
+			args:    args{iri: ""},
 			want:    nil,
 			wantErr: errors.NotFoundf("file not found"),
 		},
 		{
 			name:    "empty iri gives us not found",
-			args:    "",
+			args:    args{iri: ""},
 			want:    nil,
 			wantErr: errors.NotFoundf("file not found"),
 		},
 		{
 			name: "root iri gives us the root",
-			args: "https://example.com",
+			args: args{iri: "https://example.com"},
 			want: vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"},
 		},
 		{
 			name:    "invalid iri gives 404",
-			args:    "https://example.com/dsad",
+			args:    args{iri: "https://example.com/dsad"},
 			want:    nil,
 			wantErr: os.ErrNotExist,
 		},
 		{
 			name: "example.com/inbox",
-			args: "https://example.com/inbox",
+			args: args{iri: "https://example.com/inbox"},
 			want: vocab.OrderedCollection{
 				ID:           "https://example.com/inbox",
 				Type:         vocab.OrderedCollectionType,
@@ -186,66 +196,68 @@ func Test_repo_Load(t *testing.T) {
 		},
 		{
 			name: "example.com/inbox/0",
-			args: "https://example.com/inbox/0",
-			want: vocab.Relationship{
-				Type: vocab.RelationshipType,
-				ID:   "https://example.com/inbox/0",
-				Name: vocab.NaturalLanguageValuesNew(vocab.DefaultLangRef("Nam ut odio id risus laoreet scelerisque.")),
-				Content: vocab.NaturalLanguageValuesNew(
-					vocab.DefaultLangRef(
-						"Ut lacinia ligula a bibendum pulvinar.\nNulla nec enim in velit iaculis elementum sit amet a nibh.\n" +
-							"Quisque ac dolor tellus.\nMaecenas vestibulum odio at pellentesque gravida.\n" +
-							"In velit libero, ultrices nec quam at, lacinia congue purus.\nSed quis turpis ut sapien venenatis cursus.\n" +
-							"Nullam turpis turpis, malesuada non accumsan vitae, congue ac justo.\nSed est elit, facilisis eu malesuada non, mattis nec risus.\n" +
-							"Nulla facilisi.\nNam ut odio id risus laoreet scelerisque.\nPellentesque varius at dui nec rutrum.\n" +
-							"Nam ut odio id risus laoreet scelerisque.\nLorem ipsum dolor sit amet, consectetur adipiscing elit.\n" +
-							"Lorem ipsum dolor sit amet, consectetur adipiscing elit.\nIn velit libero, ultrices nec quam at, lacinia congue purus.\n" +
-							"Cras sit amet porta libero.\nNunc sollicitudin ut orci vel bibendum.\nVivamus eget maximus quam, non dignissim sapien.\n" +
-							"Vivamus eget maximus quam, non dignissim sapien.\nAliquam gravida gravida urna ac ornare.\n",
-					),
-				),
-			},
+			args: args{iri: "https://example.com/inbox/0"},
+			want: filter(inbox, filters.SameID("https://example.com/inbox/0"))[0],
 		},
 		{
 			name: "example.com/inbox/99",
-			args: "https://example.com/inbox/99",
-			want: vocab.Profile{
-				Type: vocab.ProfileType,
-				ID:   "https://example.com/inbox/99",
-				Name: vocab.NaturalLanguageValuesNew(vocab.DefaultLangRef("Ut lacinia ligula a bibendum pulvinar.")),
-				Content: vocab.NaturalLanguageValuesNew(vocab.DefaultLangRef(
-					`Sed metus dolor, vehicula ut cursus luctus, pellentesque a sapien.
-Nulla nec enim in velit iaculis elementum sit amet a nibh.
-Maecenas vestibulum odio at pellentesque gravida.
-Fusce sit amet eros in lacus porta vehicula.
-Donec quis tempus eros, ut bibendum nibh.
-Cras elementum leo lectus, at condimentum sapien ornare ac.
-Phasellus sit amet aliquam quam.
-Sed quam ante, feugiat id lobortis eget, dictum a ante.
-Donec accumsan pulvinar risus, eu ultrices est volutpat lobortis.
-Nulla facilisi.
-Suspendisse potenti.
-Cras elementum leo lectus, at condimentum sapien ornare ac.
-Nulla nec enim in velit iaculis elementum sit amet a nibh.
-Phasellus blandit odio in pretium pretium.
-Donec quis tempus eros, ut bibendum nibh.
-Sed est elit, facilisis eu malesuada non, mattis nec risus.
-Nunc sollicitudin ut orci vel bibendum.
-Nulla facilisi.
-Quisque lorem elit, scelerisque nec commodo ac, maximus nec neque.
-Nunc sollicitudin ut orci vel bibendum.
-Maecenas vestibulum odio at pellentesque gravida.
-Aliquam gravida gravida urna ac ornare.
-Mauris at erat accumsan, aliquet purus et, egestas elit.
-`,
-				)),
+			args: args{iri: "https://example.com/inbox/99"},
+			want: filter(inbox, filters.SameID("https://example.com/inbox/99"))[0],
+		},
+		{
+			name: "example.com/inbox?type=Create",
+			args: args{
+				iri: "https://example.com/inbox",
+				fil: filters.Checks{
+					filters.HasType(vocab.CreateType),
+				},
+			},
+			want: vocab.OrderedCollection{
+				ID:           "https://example.com/inbox",
+				Type:         vocab.OrderedCollectionType,
+				OrderedItems: filter(inbox, filters.HasType(vocab.CreateType)),
+				TotalItems:   100,
+			},
+		},
+		{
+			name: "example.com/inbox?type=Create&actor.name=Hank",
+			args: args{
+				iri: "https://example.com/inbox",
+				fil: filters.Checks{
+					filters.HasType(vocab.CreateType),
+					filters.Actor(filters.NameIs("Hank")),
+				},
+			},
+			want: vocab.OrderedCollection{
+				ID:   "https://example.com/inbox",
+				Type: vocab.OrderedCollectionType,
+				OrderedItems: filter(inbox,
+					filters.HasType(vocab.CreateType),
+					filters.Actor(filters.NameIs("Hank")),
+				),
+				TotalItems: 100,
+			},
+		},
+		{
+			name: "example.com/inbox?type=Article",
+			args: args{
+				iri: "https://example.com/inbox",
+				fil: filters.Checks{
+					filters.HasType(vocab.ArticleType),
+				},
+			},
+			want: vocab.OrderedCollection{
+				ID:           "https://example.com/inbox",
+				Type:         vocab.OrderedCollectionType,
+				OrderedItems: filter(inbox, filters.HasType(vocab.ArticleType)),
+				TotalItems:   100,
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &repo{path: mocksPath, opened: true}
-			got, err := r.Load(tt.args)
+			got, err := r.Load(tt.args.iri, tt.args.fil...)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
 				return
