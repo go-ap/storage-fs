@@ -1373,6 +1373,9 @@ func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, err
 	if isStorageCollectionKey(itPath) {
 		return r.loadCollectionFromPath(getObjectKey(itPath), iri, fil...)
 	} else {
+		if len(fil) == 0 {
+			fil = filters.Checks{filters.SameID(iri)}
+		}
 		if it, err = r.loadItemFromPath(getObjectKey(itPath), fil...); err != nil {
 			return nil, errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}

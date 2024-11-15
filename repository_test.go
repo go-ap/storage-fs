@@ -128,7 +128,7 @@ func Test_repo_Load(t *testing.T) {
 
 	mocksPath := filepath.Join(basePath, "mocks")
 	mocks := make(map[vocab.IRI]vocab.Item)
-	inbox := make([]vocab.Item, 0, 100)
+	inbox := make(vocab.ItemCollection, 0, 80)
 	_ = filepath.WalkDir(mocksPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -185,27 +185,27 @@ func Test_repo_Load(t *testing.T) {
 			wantErr: os.ErrNotExist,
 		},
 		{
-			name: "example.com/inbox",
+			name: "full inbox",
 			args: args{iri: "https://example.com/inbox"},
 			want: vocab.OrderedCollection{
 				ID:           "https://example.com/inbox",
 				Type:         vocab.OrderedCollectionType,
 				OrderedItems: inbox,
-				TotalItems:   100,
+				TotalItems:   inbox.Count(),
 			},
 		},
 		{
-			name: "example.com/inbox/0",
+			name: "inbox::0",
 			args: args{iri: "https://example.com/inbox/0"},
 			want: filter(inbox, filters.SameID("https://example.com/inbox/0"))[0],
 		},
 		{
-			name: "example.com/inbox/99",
+			name: "inbox::99",
 			args: args{iri: "https://example.com/inbox/99"},
 			want: filter(inbox, filters.SameID("https://example.com/inbox/99"))[0],
 		},
 		{
-			name: "example.com/inbox?type=Create",
+			name: "inbox?type=Create",
 			args: args{
 				iri: "https://example.com/inbox",
 				fil: filters.Checks{
@@ -216,11 +216,11 @@ func Test_repo_Load(t *testing.T) {
 				ID:           "https://example.com/inbox",
 				Type:         vocab.OrderedCollectionType,
 				OrderedItems: filter(inbox, filters.HasType(vocab.CreateType)),
-				TotalItems:   100,
+				TotalItems:   inbox.Count(),
 			},
 		},
 		{
-			name: "example.com/inbox?type=Create&actor.name=Hank",
+			name: "inbox?type=Create&actor.name=Hank",
 			args: args{
 				iri: "https://example.com/inbox",
 				fil: filters.Checks{
@@ -235,11 +235,11 @@ func Test_repo_Load(t *testing.T) {
 					filters.HasType(vocab.CreateType),
 					filters.Actor(filters.NameIs("Hank")),
 				),
-				TotalItems: 100,
+				TotalItems: inbox.Count(),
 			},
 		},
 		{
-			name: "example.com/inbox?type=Article",
+			name: "inbox?type=Article",
 			args: args{
 				iri: "https://example.com/inbox",
 				fil: filters.Checks{
@@ -250,7 +250,21 @@ func Test_repo_Load(t *testing.T) {
 				ID:           "https://example.com/inbox",
 				Type:         vocab.OrderedCollectionType,
 				OrderedItems: filter(inbox, filters.HasType(vocab.ArticleType)),
-				TotalItems:   100,
+				TotalItems:   inbox.Count(),
+			},
+		},
+		{
+			name: "inbox::2",
+			args: args{iri: "https://example.com/inbox/2"},
+			want: vocab.Activity{
+				ID:   "https://example.com/inbox/2",
+				Type: vocab.CreateType,
+				Actor: &vocab.Actor{
+					ID:                "https://example.com/Ross",
+					Type:              vocab.PersonType,
+					PreferredUsername: vocab.NaturalLanguageValuesNew(vocab.DefaultLangRef("Ross")),
+				},
+				Object: filter(inbox)[1],
 			},
 		},
 	}
