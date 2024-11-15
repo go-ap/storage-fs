@@ -1121,13 +1121,10 @@ func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, err
 	}
 
 	if len(fil) > 0 {
+		if !applyAllFiltersOnItem(it, fil...) {
+			return nil, errors.NotFoundf("not found")
+		}
 		it = dereferencePropertiesByType(r, it, fil...)
-		if it = filters.Checks(fil).Filter(it); it == nil {
-			return nil, nil
-		}
-		if !filters.All(filters.CursorChecks(fil...)...).Apply(it) {
-			return nil, nil
-		}
 	}
 	if cachedIt == nil {
 		r.setToCache(it)
@@ -1179,14 +1176,14 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 			dir := p
 			diff := strings.TrimPrefix(dir, colDirPath)
 			if strings.Count(diff, "/") != 1 {
-				// when encountering the raw file that does not match the first level under the collection path, we skip
+				// NOTE(marius): when encountering the raw file that is deeper than the first level under the collection path, we skip
 				return nil
 			}
 			if fn := filepath.Base(p); fn == objectKey || fn == metaDataKey || fn == _indexDirName {
 				return nil
 			}
 
-			ob, err := r.loadItemFromPath(getObjectKey(p))
+			ob, err := loadItemFromPath(getObjectKey(p))
 			if err != nil {
 				r.logger.Warnf("unable to load %s: %+s", p, err)
 				return nil
@@ -1202,16 +1199,17 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 		}
 	}
 
+	sort.Slice(items, func(i, j int) bool {
+		return vocab.ItemOrderTimestamp(items[i], items[j])
+	})
+
 	if orderedCollectionTypes.Contains(it.GetType()) {
 		err = vocab.OnOrderedCollection(it, buildOrderedCollection(items))
 	} else {
 		err = vocab.OnCollection(it, buildCollection(items))
 	}
-	if len(fil) > 0 {
-		return paginateCollection(r, it, fil...), err
-	}
 
-	return it, err
+	return derefPropertiesForCurrentPage(r, it, fil...), err
 }
 
 func iriWithQuery(i vocab.IRI, q url.Values) vocab.IRI {
@@ -1224,69 +1222,17 @@ func iriWithQuery(i vocab.IRI, q url.Values) vocab.IRI {
 	return vocab.IRI(u.String())
 }
 
-func paginateCollection(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item {
-	if vocab.IsNil(it) || !it.IsCollection() {
+func derefPropertiesForCurrentPage(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item {
+	if vocab.IsNil(it) || !it.IsCollection() || len(fil) == 0 {
 		return it
 	}
 
-	var (
-		total uint
-		items vocab.ItemCollection
-		next  vocab.Item
-		last  vocab.IRI
-	)
-
-	_ = vocab.OnCollectionIntf(it, func(c vocab.CollectionInterface) error {
-		items = c.Collection()
-		if len(items) > 2 {
-			last = items[len(items)-1].GetLink()
-		}
-		total = c.Count()
-
-		items = dereferencePropertiesForCollection(r, items, fil...)
+	_ = vocab.OnOrderedCollection(it, func(c *vocab.OrderedCollection) error {
+		c.OrderedItems = dereferencePropertiesForCollection(r, c.OrderedItems, fil...)
 		return nil
 	})
 
-	it, _, _ = filters.CursorFromItem(it, filters.CursorChecks(fil...)...)
-	switch it.GetType() {
-	case vocab.CollectionType:
-		_ = vocab.OnCollection(it, func(c *vocab.Collection) error {
-			c.Items = items
-			c.TotalItems = total
-			if next != nil && !next.GetLink().Equals(last, true) {
-				c.First = iriWithQuery(it.GetLink(), url.Values(filters.NextPage(next)))
-			}
-			return nil
-		})
-	case vocab.OrderedCollectionType:
-		_ = vocab.OnOrderedCollection(it, func(c *vocab.OrderedCollection) error {
-			c.OrderedItems = items
-			c.TotalItems = total
-			if next != nil && !next.GetLink().Equals(last, true) {
-				c.First = iriWithQuery(it.GetLink(), url.Values(filters.NextPage(next)))
-			}
-			return nil
-		})
-	case vocab.OrderedCollectionPageType:
-		_ = vocab.OnOrderedCollectionPage(it, func(c *vocab.OrderedCollectionPage) error {
-			c.OrderedItems = items
-			c.TotalItems = total
-			if next != nil && !next.GetLink().Equals(last, true) {
-				c.Next = iriWithQuery(it.GetLink(), url.Values(filters.NextPage(next)))
-			}
-			return nil
-		})
-	case vocab.CollectionPageType:
-		_ = vocab.OnCollectionPage(it, func(c *vocab.CollectionPage) error {
-			c.Items = items
-			c.TotalItems = total
-			if next != nil && !next.GetLink().Equals(last, true) {
-				c.Next = iriWithQuery(it.GetLink(), url.Values(filters.NextPage(next)))
-			}
-			return nil
-		})
-	}
-
+	it = filters.PaginateCollection(it, fil...)
 	return it
 }
 
@@ -1324,27 +1270,35 @@ func dereferencePropertiesByType(r *repo, it vocab.Item, fil ...filters.Check) v
 	return it
 }
 
-func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil ...filters.Check) vocab.ItemCollection {
-	sort.Slice(items, func(i, j int) bool {
-		return vocab.ItemOrderTimestamp(items[i], items[j])
-	})
+func applyAllFiltersOnItem(it vocab.Item, fil ...filters.Check) bool {
+	if !filters.All(filters.FilterChecks(fil...)...).Apply(it) {
+		return false
+	}
+	// NOTE(marius): the cursor checks don't get applied if it is not a collection,
+	// extracting them from the filters and applying them manually is the solution.
+	// We should probably fix this!!
+	if !filters.All(filters.CursorChecks(fil...)...).Apply(it) {
+		return false
+	}
+	return true
+}
 
-	enhanced := make(vocab.ItemCollection, 0)
-	for _, it := range items {
-		it = dereferencePropertiesByType(r, it, fil...)
-		if it = filters.Checks(fil).Filter(it); it == nil {
+func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil ...filters.Check) vocab.ItemCollection {
+	maxItems := filters.MaxCount(fil...)
+	for i, it := range items {
+		if !applyAllFiltersOnItem(it, fil...) {
 			continue
 		}
-		// NOTE(marius): the cursor checks don't get applied if it is not a collection,
-		// extracting them from the filters and applying them manually is the solution.
-		// We should probably fix this!!
-		if !filters.All(filters.CursorChecks(fil...)...).Apply(it) {
-			continue
+		if it = dereferencePropertiesByType(r, it, fil...); !vocab.IsNil(it) {
+			items[i] = it
 		}
-		_ = enhanced.Append(it)
+		counted := filters.Counted(fil...)
+		if maxItems > 0 && counted == maxItems {
+			break
+		}
 	}
 
-	return enhanced
+	return items
 }
 
 func buildCollection(items vocab.ItemCollection) vocab.WithCollectionFn {
@@ -1358,9 +1312,6 @@ func buildCollection(items vocab.ItemCollection) vocab.WithCollectionFn {
 func buildOrderedCollection(items vocab.ItemCollection) vocab.WithOrderedCollectionFn {
 	return func(col *vocab.OrderedCollection) error {
 		col.OrderedItems = items
-		sort.Slice(col.OrderedItems, func(i, j int) bool {
-			return vocab.ItemOrderTimestamp(col.OrderedItems[i], col.OrderedItems[j])
-		})
 		col.TotalItems = uint(len(items))
 		return nil
 	}

@@ -1,1 +1,1 @@
-{"id":"https://example.com/inbox/53","type":"Read","object":{"id":"https://https:/example.com/inbox/53/object","type":"Event","name":"Cras sit amet porta libero."},"actor":{"id":"https://https:/example.com/Jill","type":"Service","preferredUsername":"Jill"}}
+{"id":"https://example.com/inbox/53","type":"Read","object":{"id":"https://example.com/inbox/53/object","type":"Event","name":"Cras sit amet porta libero."},"actor":{"id":"https://example.com/Jill","type":"Service","preferredUsername":"Jill"}}

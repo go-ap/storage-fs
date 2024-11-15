@@ -1,1 +1,1 @@
-{"id":"https://example.com/inbox/67","type":"Update","object":{"id":"https://https:/example.com/inbox/67/object","type":"Image","name":"Maecenas vestibulum odio at pellentesque gravida."},"actor":{"id":"https://https:/example.com/El","type":"Person","preferredUsername":"El"}}
+{"id":"https://example.com/inbox/67","type":"Update","object":{"id":"https://example.com/inbox/67/object","type":"Image","name":"Maecenas vestibulum odio at pellentesque gravida."},"actor":{"id":"https://example.com/El","type":"Person","preferredUsername":"El"}}

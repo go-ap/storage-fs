@@ -1,1 +1,1 @@
-{"id":"https://example.com/inbox/18","type":"Join","object":{"id":"https://https:/example.com/inbox/18/object","type":"Page","url":"https://https:/example.com/inbox/18/object"},"actor":{"id":"https://https:/example.com/Diana","type":"Group","preferredUsername":"Diana"}}
+{"id":"https://example.com/inbox/18","type":"Join","object":{"id":"https://example.com/inbox/18/object","type":"Page","url":"https://example.com/inbox/18/object"},"actor":{"id":"https://example.com/Diana","type":"Group","preferredUsername":"Diana"}}
