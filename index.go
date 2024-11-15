@@ -86,6 +86,9 @@ func (r *repo) searchIndex(col vocab.Item, ff ...filters.Check) (vocab.ItemColle
 	if err := r.loadBitmapFromFile(idxPath, &colBmp); err == nil {
 		bmp.And(&colBmp)
 	}
+	if bmp.IsEmpty() {
+		return nil, nil
+	}
 
 	result := make(vocab.ItemCollection, 0, bmp.GetCardinality())
 	colBmp.Iterate(func(x uint32) bool {

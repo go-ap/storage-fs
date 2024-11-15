@@ -1164,6 +1164,8 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 
 	items, _ := r.searchIndex(it, fil...)
 	if items == nil {
+		// NOTE(marius): we load items the hard way _only_ if items is nil
+		// If items is a zero length slice, it's likely that the index search didn't return any results.
 		items = make(vocab.ItemCollection, 0)
 
 		err = filepath.WalkDir(colDirPath, func(p string, info os.DirEntry, err error) error {
