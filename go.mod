@@ -8,8 +8,8 @@ require (
 	github.com/go-ap/activitypub v0.0.0-20241114170014-e897df079e3d
 	github.com/go-ap/cache v0.0.0-20241104141048-912618952f30
 	github.com/go-ap/errors v0.0.0-20240910140019-1e9d33cc1568
-	github.com/go-ap/filters v0.0.0-20241114180543-12d9a15be344
-	github.com/go-ap/processing v0.0.0-20241114185854-de48747d79d1
+	github.com/go-ap/filters v0.0.0-20241115202445-254147ddef7f
+	github.com/go-ap/processing v0.0.0-20241115202802-cb4383b41fcc
 	github.com/openshift/osin v1.0.2-0.20220317075346-0f4d38c6e53f
 	golang.org/x/crypto v0.29.0
 	golang.org/x/sys v0.27.0
