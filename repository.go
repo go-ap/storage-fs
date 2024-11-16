@@ -1160,10 +1160,12 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 	colDirPath := filepath.Dir(itPath)
 
 	items, _ := r.searchIndex(it, fil...)
-	if items == nil {
+	if len(items) == 0 {
 		// NOTE(marius): we load items the hard way _only_ if items is nil
 		// If items is a zero length slice, it's likely that the index search didn't return any results.
-		items = make(vocab.ItemCollection, 0)
+		if items == nil {
+			items = make(vocab.ItemCollection, 0)
+		}
 
 		err = filepath.WalkDir(colDirPath, func(p string, info os.DirEntry, err error) error {
 			if err != nil && os.IsNotExist(err) {
@@ -1285,8 +1287,13 @@ func applyAllFiltersOnItem(it vocab.Item, fil ...filters.Check) bool {
 
 func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil ...filters.Check) vocab.ItemCollection {
 	maxItems := filters.MaxCount(fil...)
+	itemFilters := filters.ItemChecks(fil...)
 	for i, it := range items {
-		if !applyAllFiltersOnItem(it, fil...) {
+		// NOTE(marius): we apply only the top level filters before we dereference the item's properties.
+		// This makes it that if we have filters like actor.type=X, we don't filter them out because the activity
+		// doesn't have the actor loaded, therefore having no type.
+		// In the next step we dereference the properties, and we filter them with all filters.
+		if !filters.All(filters.FilterChecks(itemFilters...)...).Apply(it) {
 			continue
 		}
 		if it = dereferencePropertiesByType(r, it, fil...); !vocab.IsNil(it) {
