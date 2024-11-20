@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"git.sr.ht/~mariusor/lw"
+	"github.com/RoaringBitmap/roaring"
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
@@ -207,9 +208,12 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 	if err != nil {
 		return err
 	}
-	if err = r.removeFromCollectionIndex(col, it); err != nil && !errors.Is(err, cacheDisabled) {
+
+	err = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring.Bitmap).Remove))
+	if err != nil && !errors.Is(err, cacheDisabled) {
 		r.logger.Errorf("unable to remote item %s from collection index: %s", it.GetLink(), err)
 	}
+
 	r.removeFromCache(it.GetLink())
 	return nil
 }
@@ -296,21 +300,21 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		if col, err = r.loadItemFromPath(getObjectKey(itPath)); err != nil {
 			return err
 		}
-		parent, t := allStorageCollections.Split(colIRI)
-		if isStorageCollectionKey(string(t)) {
+		parent, destination := allStorageCollections.Split(colIRI)
+		if isStorageCollectionKey(string(destination)) {
 			// Create the collection on the object, if it doesn't exist
 			i, err := r.loadFromIRI(parent, filters.WithMaxCount(1))
 			if err != nil {
 				return err
 			}
-			if p, ok := t.AddTo(i); ok {
+			if p, ok := destination.AddTo(i); ok {
 				_, _ = save(r, i)
 				link = p
 			} else {
-				link = t.IRI(i)
+				link = destination.IRI(i)
 			}
 		} else {
-			return errors.Newf("Invalid collection %s", t)
+			return errors.Newf("Invalid collection %s", destination)
 		}
 	} else {
 		// NOTE(marius): for hidden collections we might not have the __raw file on disk, so we just wing it
@@ -380,11 +384,13 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 			return nil
 		})
 	}
-	_, err = save(r, col)
-	if err != nil {
+
+	if _, err = save(r, col); err != nil {
 		return err
 	}
-	if err = r.addToCollectionIndex(col, it); err != nil && !errors.IsNotImplemented(err) {
+
+	err = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring.Bitmap).Add))
+	if err != nil && !errors.IsNotImplemented(err) {
 		r.logger.Errorf("unable to add item %s to collection index: %s", it.GetLink(), err)
 	}
 	return nil
@@ -659,6 +665,7 @@ func (r *repo) itemStoragePath(iri vocab.IRI) string {
 }
 
 // createCollections
+// FIXME(marius): this seems to be quite slow... INVESTIGATE!!!
 func createCollections(r *repo, it vocab.Item) error {
 	if vocab.IsNil(it) || !it.IsObject() {
 		return nil
@@ -832,7 +839,7 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 		if wrote != len(entryBytes) {
 			return it, errors.Annotatef(err, "failed writing object")
 		}
-		if err = r.addToObjectIndex(it, itPath); err != nil && !errors.IsNotImplemented(err) {
+		if err = r.addToIndex(it, itPath); err != nil && !errors.IsNotImplemented(err) {
 			r.logger.Errorf("unable to add item %s to index: %s", it.GetLink(), err)
 		}
 
@@ -1161,8 +1168,8 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 
 	items, _ := r.searchIndex(it, fil...)
 	if len(items) == 0 {
-		// NOTE(marius): we load items the hard way _only_ if items is nil
-		// If items is a zero length slice, it's likely that the index search didn't return any results.
+		// NOTE(marius): we load items the hard way if the index search resulted no hits, because we
+		// can't make use of all the filters in the index. (Yet.)
 		if items == nil {
 			items = make(vocab.ItemCollection, 0)
 		}
@@ -1214,16 +1221,6 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 	return derefPropertiesForCurrentPage(r, it, fil...), err
 }
 
-func iriWithQuery(i vocab.IRI, q url.Values) vocab.IRI {
-	u, _ := i.URL()
-
-	for k, v := range u.Query() {
-		q[k] = v
-	}
-	u.RawQuery = q.Encode()
-	return vocab.IRI(u.String())
-}
-
 func derefPropertiesForCurrentPage(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item {
 	if vocab.IsNil(it) || !it.IsCollection() || len(fil) == 0 {
 		return it
@@ -1273,13 +1270,13 @@ func dereferencePropertiesByType(r *repo, it vocab.Item, fil ...filters.Check) v
 }
 
 func applyAllFiltersOnItem(it vocab.Item, fil ...filters.Check) bool {
-	if !filters.All(filters.FilterChecks(fil...)...).Apply(it) {
+	if !filters.All(filters.FilterChecks(fil...)...).Match(it) {
 		return false
 	}
 	// NOTE(marius): the cursor checks don't get applied if it is not a collection,
 	// extracting them from the filters and applying them manually is the solution.
 	// We should probably fix this!!
-	if !filters.All(filters.CursorChecks(fil...)...).Apply(it) {
+	if !filters.All(filters.CursorChecks(fil...)...).Match(it) {
 		return false
 	}
 	return true
@@ -1293,7 +1290,7 @@ func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil
 		// This makes it that if we have filters like actor.type=X, we don't filter them out because the activity
 		// doesn't have the actor loaded, therefore having no type.
 		// In the next step we dereference the properties, and we filter them with all filters.
-		if !filters.All(filters.FilterChecks(itemFilters...)...).Apply(it) {
+		if !filters.All(filters.FilterChecks(itemFilters...)...).Match(it) {
 			continue
 		}
 		if it = dereferencePropertiesByType(r, it, fil...); !vocab.IsNil(it) {

@@ -82,25 +82,26 @@ func (r *repo) searchIndex(col vocab.Item, ff ...filters.Check) (vocab.ItemColle
 	idxPath := r.collectionIndexStoragePath(col.GetLink())
 
 	bmp := filters.Checks(ff).IndexMatch(i.all)
-	colBmp := roaring.Bitmap{}
-	if err := r.loadBitmapFromFile(idxPath, &colBmp); err == nil {
-		bmp.And(&colBmp)
+	colBmp := new(roaring.Bitmap)
+	if err := r.loadBinFromFile(idxPath, colBmp); err == nil {
+		bmp.And(colBmp)
 	}
 	if bmp.IsEmpty() {
 		return nil, nil
 	}
 
 	result := make(vocab.ItemCollection, 0, bmp.GetCardinality())
-	colBmp.Iterate(func(x uint32) bool {
+	it := bmp.Iterator()
+	for x := it.PeekNext(); it.HasNext(); x = it.Next() {
 		if ip, ok := i.ref[x]; ok {
-			it, err := loadItemFromPath(getObjectKey(filepath.Join(r.path, ip)))
+			p := filepath.Join(r.path, ip)
+			ob, err := loadItemFromPath(getObjectKey(p))
 			if err != nil {
-				return true
+				continue
 			}
-			result = append(result, it)
+			result = append(result, ob)
 		}
-		return true
-	})
+	}
 
 	return result, nil
 }
@@ -143,7 +144,7 @@ func getIndexKey(typ index.Type) string {
 
 const _refName = ".ref.gob"
 
-func (r *repo) writeBitmapFile(path string, bmp any) error {
+func (r *repo) writeBinFile(path string, bmp any) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		r.logger.Warnf("%s not found", path)
@@ -169,18 +170,18 @@ func saveIndex(r *repo) error {
 
 	errs := make([]error, 0, len(r.index.all))
 	for typ, bmp := range r.index.all {
-		if err := r.writeBitmapFile(filepath.Join(idxPath, getIndexKey(typ)), bmp); err != nil {
+		if err := r.writeBinFile(filepath.Join(idxPath, getIndexKey(typ)), bmp); err != nil {
 			errs = append(errs, err)
 		}
 	}
-	if err := r.writeBitmapFile(filepath.Join(idxPath, _refName), r.index.ref); err != nil {
+	if err := r.writeBinFile(filepath.Join(idxPath, _refName), r.index.ref); err != nil {
 		errs = append(errs, err)
 	}
 
 	return errors.Join(errs...)
 }
 
-func (r *repo) loadBitmapFromFile(path string, bmp any) error {
+func (r *repo) loadBinFromFile(path string, bmp any) error {
 	f, err := os.OpenFile(path, os.O_RDONLY, 0600)
 	if err != nil {
 		r.logger.Warnf("Unable to %s", asPathErr(err, r.path))
@@ -205,11 +206,11 @@ func loadIndex(r *repo) error {
 	errs := make([]error, 0, len(r.index.all))
 	idxPath := r.indexStoragePath()
 	for typ, bmp := range r.index.all {
-		if err := r.loadBitmapFromFile(filepath.Join(idxPath, getIndexKey(typ)), bmp); err != nil {
+		if err := r.loadBinFromFile(filepath.Join(idxPath, getIndexKey(typ)), bmp); err != nil {
 			errs = append(errs, err)
 		}
 	}
-	if err := r.loadBitmapFromFile(filepath.Join(idxPath, _refName), &r.index.ref); err != nil {
+	if err := r.loadBinFromFile(filepath.Join(idxPath, _refName), &r.index.ref); err != nil {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
@@ -217,36 +218,19 @@ func loadIndex(r *repo) error {
 
 var cacheDisabled = errors.NotImplementedf("index is disabled")
 
-func (r *repo) onCollectionIndex(col, it vocab.Item, fn func(*roaring.Bitmap, uint32)) error {
-	if r.index == nil {
+func onCollectionBitmap(bmp *roaring.Bitmap, it vocab.Item, fn func(*roaring.Bitmap, uint32)) error {
+	if bmp == nil {
 		return cacheDisabled
 	}
 	hashFn := index.HashFn
 	if hashFn == nil {
 		return cacheDisabled
 	}
-
-	idxPath := r.collectionIndexStoragePath(col.GetLink())
-
-	bmp := roaring.Bitmap{}
-	if err := r.loadBitmapFromFile(idxPath, &bmp); err != nil {
-		bmp = *roaring.New()
-	}
-
-	fn(&bmp, hashFn(it.GetLink()))
-
-	return r.writeBitmapFile(idxPath, &bmp)
+	fn(bmp, hashFn(it.GetLink()))
+	return nil
 }
 
-func (r *repo) removeFromCollectionIndex(col, it vocab.Item) error {
-	return r.onCollectionIndex(col, it, (*roaring.Bitmap).Remove)
-}
-
-func (r *repo) addToCollectionIndex(col, it vocab.Item) error {
-	return r.onCollectionIndex(col, it, (*roaring.Bitmap).Add)
-}
-
-func (r *repo) removeFromObjectIndex(it vocab.Item, path string) error {
+func (r *repo) removeFromIndex(it vocab.Item, path string) error {
 	if r.index == nil {
 		return cacheDisabled
 	}
@@ -289,7 +273,7 @@ func (r *repo) removeFromObjectIndex(it vocab.Item, path string) error {
 	return errors.Join(errs...)
 }
 
-func (r *repo) addToObjectIndex(it vocab.Item, path string) error {
+func (r *repo) addToIndex(it vocab.Item, path string) error {
 	if r.index == nil {
 		return cacheDisabled
 	}
@@ -337,6 +321,26 @@ func (r *repo) iriFromPath(p string) vocab.IRI {
 	return vocab.IRI(fmt.Sprintf("https://%s", p))
 }
 
+func (r *repo) collectionBitmapOp(fn func(*roaring.Bitmap, uint32)) func(col vocab.CollectionInterface) error {
+	return func(col vocab.CollectionInterface) error {
+		iri := col.GetLink()
+		idxPath := r.collectionIndexStoragePath(iri)
+		bmp := new(roaring.Bitmap)
+		if err := r.loadBinFromFile(idxPath, bmp); err != nil {
+			r.logger.Warnf("Unable to load collection index %s: %s", iri, err)
+		}
+		for _, ob := range col.Collection() {
+			if err := onCollectionBitmap(bmp, ob, fn); err != nil {
+				if errors.IsNotImplemented(err) {
+					return fs.SkipAll
+				}
+				r.logger.Warnf("Unable to add item %s to index: %s", iri, err)
+			}
+		}
+		return r.writeBinFile(idxPath, bmp)
+	}
+}
+
 func (r *repo) Reindex() (err error) {
 	if err = r.Open(); err != nil {
 		return err
@@ -368,24 +372,14 @@ func (r *repo) Reindex() (err error) {
 		iri := r.iriFromPath(dir)
 		if storageCollectionPaths.Contains(vocab.CollectionPath(maybeCol)) {
 			it, err = r.loadCollectionFromPath(filepath.Join(r.path, path), iri)
-			_ = vocab.OnCollectionIntf(it, func(col vocab.CollectionInterface) error {
-				for _, ob := range col.Collection() {
-					if err = r.addToCollectionIndex(it, ob); err != nil {
-						if errors.IsNotImplemented(err) {
-							return fs.SkipAll
-						}
-						r.logger.Warnf("Unable to add item %s to index: %s", iri, err)
-					}
-				}
-				return nil
-			})
+			_ = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring.Bitmap).Add))
 		} else {
 			it, err = r.loadItemFromPath(filepath.Join(r.path, path))
 		}
 		if err != nil || vocab.IsNil(it) {
 			return nil
 		}
-		if err = r.addToObjectIndex(it, dir); err != nil {
+		if err = r.addToIndex(it, dir); err != nil {
 			if errors.IsNotImplemented(err) {
 				return fs.SkipAll
 			}
