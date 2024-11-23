@@ -183,18 +183,18 @@ func saveIndex(r *repo) error {
 	return errors.Join(errs...)
 }
 
-func (r *repo) loadBinFromFile(path string, bmp any) error {
+func (r *repo) loadBinFromFile(path string, bmp any) (err error) {
 	f, err := os.OpenFile(path, os.O_RDONLY, 0600)
 	if err != nil {
-		r.logger.Warnf("Unable to %s", asPathErr(err, r.path))
 		return err
 	}
 	defer func() {
-		if err := f.Close(); err != nil {
-			r.logger.Warnf("Unable to close file: %s", asPathErr(err, r.path))
-		}
+		err = f.Close()
 	}()
-	return gob.NewDecoder(f).Decode(bmp)
+	if err = gob.NewDecoder(f).Decode(bmp); err != nil {
+		return err
+	}
+	return nil
 }
 
 func loadIndex(r *repo) error {
@@ -276,7 +276,6 @@ func (r *repo) addToIndex(it vocab.Item, path string) error {
 	}
 	in := r.index
 
-	errs := make([]error, 0)
 	switch {
 	case vocab.ActivityTypes.Contains(it.GetType()):
 		_ = in.all[index.ByActor].Add(it)
@@ -294,7 +293,7 @@ func (r *repo) addToIndex(it vocab.Item, path string) error {
 	}
 	in.ref[itemRef] = path
 
-	return errors.Join(errs...)
+	return nil
 }
 
 func (r *repo) iriFromPath(p string) vocab.IRI {
@@ -306,10 +305,14 @@ func (r *repo) collectionBitmapOp(fn func(*roaring.Bitmap, uint32)) func(col voc
 	return func(col vocab.CollectionInterface) error {
 		iri := col.GetLink()
 		idxPath := r.collectionIndexStoragePath(iri)
+
 		bmp := new(roaring.Bitmap)
 		if err := r.loadBinFromFile(idxPath, bmp); err != nil {
-			r.logger.Warnf("Unable to load collection index %s: %s", iri, err)
+			//r.logger.Warnf("Unable to load collection index %s: %s", iri, err)
 		}
+
+		wasEmpty := bmp.GetCardinality() == 0
+
 		for _, ob := range col.Collection() {
 			if err := onCollectionBitmap(bmp, ob, fn); err != nil {
 				if errors.IsNotImplemented(err) {
@@ -318,18 +321,30 @@ func (r *repo) collectionBitmapOp(fn func(*roaring.Bitmap, uint32)) func(col voc
 				r.logger.Warnf("Unable to add item %s to index: %s", iri, err)
 			}
 		}
+
+		// NOTE(marius): if there was nothing in the bitmap, and we didn't add
+		// anything either, we don't save the collection file.
+		if isEmpty := bmp.GetCardinality() == 0; isEmpty {
+			if wasEmpty {
+				return nil
+			}
+			// NOTE(marius): if the collection wasn't empty and we removed the last item from it,
+			// we can remove the collection index file.
+			return os.RemoveAll(idxPath)
+		}
+
 		return r.writeBinFile(idxPath, bmp)
 	}
 }
 
 func (r *repo) Reindex() (err error) {
-	if err = r.Open(); err != nil {
-		return err
-	}
-	defer r.Close()
+	//if err = r.Open(); err != nil {
+	//	return err
+	//}
+	//defer r.Close()
 
 	if err = loadIndex(r); err != nil {
-		r.logger.Warnf("Unable to load indexes: %s", err)
+		//r.logger.Warnf("Unable to load indexes: %s", err)
 	}
 	defer func() {
 		err = saveIndex(r)

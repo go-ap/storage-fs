@@ -89,6 +89,7 @@ func (r *repo) Open() error {
 	if r.opened {
 		return nil
 	}
+	// NOTE(marius): this is needed in order that the relative symlinks used for collection items to work
 	if err := os.Chdir(r.path); err != nil {
 		return err
 	}
