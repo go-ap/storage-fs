@@ -210,7 +210,7 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
-	err = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring.Bitmap).Remove))
+	err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring.Bitmap).Remove, it))
 	if err != nil && !errors.Is(err, cacheDisabled) {
 		r.logger.Errorf("unable to remote item %s from collection index: %s", it.GetLink(), err)
 	}
@@ -362,9 +362,12 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		}
 		// NOTE(marius): we can't use hard links as we're linking to folders :(
 		// This would have been tremendously easier (as in, not having to compute paths) with hard-links.
-		if err = os.Symlink(itOriginalPath, fullLink); os.IsExist(err) {
-			_ = os.Remove(fullLink)
-			err = os.Symlink(itOriginalPath, fullLink)
+		if err = os.Symlink(itOriginalPath, fullLink); err != nil {
+			//_ = os.Remove(fullLink)
+			//err = os.Symlink(itOriginalPath, fullLink)
+			if !os.IsExist(err) {
+				r.logger.Debugf("unable to symlink to collection %s: %s", fullLink, err.Error())
+			}
 		}
 		return err
 	})
@@ -390,9 +393,9 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
-	err = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring.Bitmap).Add))
+	err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring.Bitmap).Add, it))
 	if err != nil && !errors.IsNotImplemented(err) {
-		r.logger.Errorf("unable to add item %s to collection index: %s", it.GetLink(), err)
+		r.logger.Debugf("unable to add item %s to collection index: %s", it.GetLink(), err)
 	}
 	return nil
 }
@@ -1209,7 +1212,7 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 		}
 	}
 
-	sort.Slice(items, func(i, j int) bool {
+	sort.SliceStable(items, func(i, j int) bool {
 		return vocab.ItemOrderTimestamp(items[i], items[j])
 	})
 
@@ -1232,8 +1235,7 @@ func derefPropertiesForCurrentPage(r *repo, it vocab.Item, fil ...filters.Check)
 		return nil
 	})
 
-	it = filters.PaginateCollection(it, fil...)
-	return it
+	return filters.PaginateCollection(it, fil...)
 }
 
 func dereferencePropertiesByType(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item {

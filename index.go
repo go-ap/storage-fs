@@ -94,10 +94,16 @@ func (r *repo) searchIndex(col vocab.Item, ff ...filters.Check) (vocab.ItemColle
 
 	result := make(vocab.ItemCollection, 0, bmp.GetCardinality())
 	it := bmp.Iterator()
-	for x := it.PeekNext(); it.HasNext(); x = it.Next() {
+	for it.HasNext() {
+		x := it.Next()
 		if ip, ok := i.ref[x]; ok {
-			p := filepath.Join(r.path, ip)
-			ob, err := loadItemFromPath(getObjectKey(p))
+			if !strings.Contains(ip, r.path) {
+				ip = filepath.Join(r.path, ip)
+			}
+			ob, err := loadItemFromPath(getObjectKey(ip))
+			if strings.Contains(getObjectKey(ip), "02cec134-68a0-48aa-8c9b-9b1f1a2cbe27") {
+				r.logger.Infof("grrr: %s: %#v", getObjectKey(ip), ob)
+			}
 			if err != nil {
 				continue
 			}
@@ -301,7 +307,7 @@ func (r *repo) iriFromPath(p string) vocab.IRI {
 	return vocab.IRI(fmt.Sprintf("https://%s", p))
 }
 
-func (r *repo) collectionBitmapOp(fn func(*roaring.Bitmap, uint32)) func(col vocab.CollectionInterface) error {
+func (r *repo) collectionBitmapOp(fn func(*roaring.Bitmap, uint32), items ...vocab.Item) func(col vocab.CollectionInterface) error {
 	return func(col vocab.CollectionInterface) error {
 		iri := col.GetLink()
 		idxPath := r.collectionIndexStoragePath(iri)
@@ -313,7 +319,13 @@ func (r *repo) collectionBitmapOp(fn func(*roaring.Bitmap, uint32)) func(col voc
 
 		wasEmpty := bmp.GetCardinality() == 0
 
-		for _, ob := range col.Collection() {
+		// NOTE(marius): this is terrible, we're using the same function for indexing a full collection
+		// but also to add a single item to the collection index.
+		if len(items) == 0 {
+			items = col.Collection()
+		}
+
+		for _, ob := range items {
 			if err := onCollectionBitmap(bmp, ob, fn); err != nil {
 				if errors.IsNotImplemented(err) {
 					return fs.SkipAll
@@ -368,7 +380,9 @@ func (r *repo) Reindex() (err error) {
 		iri := r.iriFromPath(dir)
 		if storageCollectionPaths.Contains(vocab.CollectionPath(maybeCol)) {
 			it, err = r.loadCollectionFromPath(filepath.Join(r.path, path), iri)
-			_ = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring.Bitmap).Add))
+			if err == nil {
+				err = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring.Bitmap).Add))
+			}
 		} else {
 			it, err = r.loadItemFromPath(filepath.Join(r.path, path))
 		}
