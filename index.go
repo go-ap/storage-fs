@@ -23,7 +23,7 @@ type bitmaps struct {
 }
 
 var genericIndexTypes = []index.Type{
-	index.ByType,
+	index.ByID, index.ByType,
 	index.ByRecipients, index.ByAttributedTo,
 	index.ByName, index.BySummary, index.ByContent,
 }
@@ -41,6 +41,8 @@ func newBitmap(typ ...index.Type) *bitmaps {
 	}
 	for _, tt := range typ {
 		switch tt {
+		case index.ByID:
+			b.all[tt] = index.All()
 		case index.ByType:
 			b.all[tt] = index.TokenBitmap(index.ExtractType)
 		case index.ByName:
@@ -118,6 +120,8 @@ func (r *repo) collectionIndexStoragePath(col vocab.IRI) string {
 
 func getIndexKey(typ index.Type) string {
 	switch typ {
+	case index.ByID:
+		return ".all.gob"
 	case index.ByType:
 		return ".type.gob"
 	case index.ByName:
@@ -136,8 +140,6 @@ func getIndexKey(typ index.Type) string {
 		return ".recipients.gob"
 	case index.ByAttributedTo:
 		return ".attributedTo.gob"
-	case index.ByCollection:
-		return ".items.gob"
 	}
 	return ""
 }
@@ -241,20 +243,12 @@ func (r *repo) removeFromIndex(it vocab.Item, path string) error {
 	errs := make([]error, 0)
 	switch {
 	case vocab.ActivityTypes.Contains(it.GetType()):
-		if _, err := in.all[index.ByActor].Add(it); err != nil {
-			errs = append(errs, err)
-		}
-		if _, err := in.all[index.ByObject].Add(it); err != nil {
-			errs = append(errs, err)
-		}
+		_ = in.all[index.ByActor].Add(it)
+		_ = in.all[index.ByObject].Add(it)
 	case vocab.IntransitiveActivityTypes.Contains(it.GetType()):
-		if _, err := in.all[index.ByActor].Add(it); err != nil {
-			errs = append(errs, err)
-		}
+		_ = in.all[index.ByActor].Add(it)
 	case vocab.ActorTypes.Contains(it.GetType()):
-		if _, err := in.all[index.ByPreferredUsername].Add(it); err != nil {
-			errs = append(errs, err)
-		}
+		_ = in.all[index.ByPreferredUsername].Add(it)
 	}
 
 	type remover interface {
@@ -285,31 +279,18 @@ func (r *repo) addToIndex(it vocab.Item, path string) error {
 	errs := make([]error, 0)
 	switch {
 	case vocab.ActivityTypes.Contains(it.GetType()):
-		if _, err := in.all[index.ByActor].Add(it); err != nil {
-			errs = append(errs, err)
-		}
-		if _, err := in.all[index.ByObject].Add(it); err != nil {
-			errs = append(errs, err)
-		}
+		_ = in.all[index.ByActor].Add(it)
+		_ = in.all[index.ByObject].Add(it)
 	case vocab.IntransitiveActivityTypes.Contains(it.GetType()):
-		if _, err := in.all[index.ByActor].Add(it); err != nil {
-			errs = append(errs, err)
-		}
+		_ = in.all[index.ByActor].Add(it)
 	case vocab.ActorTypes.Contains(it.GetType()):
-		if _, err := in.all[index.ByPreferredUsername].Add(it); err != nil {
-			errs = append(errs, err)
-		}
+		_ = in.all[index.ByPreferredUsername].Add(it)
 	}
 
 	var itemRef uint32
 	// NOTE(marius): all objects should get added to these indexes
 	for _, gi := range genericIndexTypes {
-		ir, err := in.all[gi].Add(it)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		itemRef = ir
+		itemRef = in.all[gi].Add(it)
 	}
 	in.ref[itemRef] = path
 
