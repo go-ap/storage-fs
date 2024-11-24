@@ -101,9 +101,6 @@ func (r *repo) searchIndex(col vocab.Item, ff ...filters.Check) (vocab.ItemColle
 				ip = filepath.Join(r.path, ip)
 			}
 			ob, err := loadItemFromPath(getObjectKey(ip))
-			if strings.Contains(getObjectKey(ip), "02cec134-68a0-48aa-8c9b-9b1f1a2cbe27") {
-				r.logger.Infof("grrr: %s: %#v", getObjectKey(ip), ob)
-			}
 			if err != nil {
 				continue
 			}

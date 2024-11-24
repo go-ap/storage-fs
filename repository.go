@@ -16,7 +16,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -1211,10 +1210,6 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 			return it, err
 		}
 	}
-
-	sort.SliceStable(items, func(i, j int) bool {
-		return vocab.ItemOrderTimestamp(items[i], items[j])
-	})
 
 	if orderedCollectionTypes.Contains(it.GetType()) {
 		err = vocab.OnOrderedCollection(it, buildOrderedCollection(items))
