@@ -17,7 +17,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"git.sr.ht/~mariusor/lw"
@@ -194,7 +193,7 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 				if err != nil {
 					continue
 				}
-				if fi.Name() == name && (isSymLink(fi) || isHardLink(fi)) {
+				if fi.Name() == name && isSymLink(fi) {
 					inCollection = true
 				}
 			}
@@ -223,16 +222,6 @@ func isSymLink(fi os.FileInfo) bool {
 		return false
 	}
 	return fi.Mode()&os.ModeSymlink == os.ModeSymlink
-}
-
-func isHardLink(fi os.FileInfo) bool {
-	nlink := uint64(0)
-	if sys := fi.Sys(); sys != nil {
-		if stat, ok := sys.(*syscall.Stat_t); ok {
-			nlink = uint64(stat.Nlink)
-		}
-	}
-	return nlink > 1 && !fi.IsDir()
 }
 
 var allStorageCollections = append(vocab.ActivityPubCollections, filters.FedBOXCollections...)
@@ -338,7 +327,7 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		}
 
 		if fi, _ := os.Stat(fullLink); fi != nil {
-			if isSymLink(fi) || isHardLink(fi) {
+			if isSymLink(fi) {
 				return nil
 			}
 		}
