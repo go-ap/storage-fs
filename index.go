@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/RoaringBitmap/roaring"
+	"github.com/RoaringBitmap/roaring/roaring64"
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
 	"github.com/go-ap/filters"
@@ -18,7 +18,7 @@ import (
 
 type bitmaps struct {
 	w   sync.RWMutex
-	ref map[uint32]string
+	ref map[uint64]string
 	all map[index.Type]index.Indexable
 }
 
@@ -36,7 +36,7 @@ func newBitmap(typ ...index.Type) *bitmaps {
 		typ = allIndexTypes
 	}
 	b := bitmaps{
-		ref: make(map[uint32]string),
+		ref: make(map[uint64]string),
 		all: make(map[index.Type]index.Indexable),
 	}
 	for _, tt := range typ {
@@ -84,7 +84,7 @@ func (r *repo) searchIndex(col vocab.Item, ff ...filters.Check) (vocab.ItemColle
 	idxPath := r.collectionIndexStoragePath(col.GetLink())
 
 	bmp := filters.Checks(ff).IndexMatch(i.all)
-	colBmp := new(roaring.Bitmap)
+	colBmp := roaring64.New()
 	if err := r.loadBinFromFile(idxPath, colBmp); err == nil {
 		bmp.And(colBmp)
 	}
@@ -223,7 +223,7 @@ func loadIndex(r *repo) error {
 
 var cacheDisabled = errors.NotImplementedf("index is disabled")
 
-func onCollectionBitmap(bmp *roaring.Bitmap, it vocab.Item, fn func(*roaring.Bitmap, uint32)) error {
+func onCollectionBitmap(bmp *roaring64.Bitmap, it vocab.Item, fn func(*roaring64.Bitmap, uint64)) error {
 	if bmp == nil {
 		return cacheDisabled
 	}
@@ -289,7 +289,7 @@ func (r *repo) addToIndex(it vocab.Item, path string) error {
 		_ = in.all[index.ByPreferredUsername].Add(it)
 	}
 
-	var itemRef uint32
+	var itemRef uint64
 	// NOTE(marius): all objects should get added to these indexes
 	for _, gi := range genericIndexTypes {
 		itemRef = in.all[gi].Add(it)
@@ -304,12 +304,12 @@ func (r *repo) iriFromPath(p string) vocab.IRI {
 	return vocab.IRI(fmt.Sprintf("https://%s", p))
 }
 
-func (r *repo) collectionBitmapOp(fn func(*roaring.Bitmap, uint32), items ...vocab.Item) func(col vocab.CollectionInterface) error {
+func (r *repo) collectionBitmapOp(fn func(*roaring64.Bitmap, uint64), items ...vocab.Item) func(col vocab.CollectionInterface) error {
 	return func(col vocab.CollectionInterface) error {
 		iri := col.GetLink()
 		idxPath := r.collectionIndexStoragePath(iri)
 
-		bmp := new(roaring.Bitmap)
+		bmp := roaring64.New()
 		if err := r.loadBinFromFile(idxPath, bmp); err != nil {
 			//r.logger.Warnf("Unable to load collection index %s: %s", iri, err)
 		}
@@ -378,7 +378,7 @@ func (r *repo) Reindex() (err error) {
 		if storageCollectionPaths.Contains(vocab.CollectionPath(maybeCol)) {
 			it, err = r.loadCollectionFromPath(filepath.Join(r.path, path), iri)
 			if err == nil {
-				err = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring.Bitmap).Add))
+				err = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring64.Bitmap).Add))
 			}
 		} else {
 			it, err = r.loadItemFromPath(filepath.Join(r.path, path))

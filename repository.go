@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"git.sr.ht/~mariusor/lw"
-	"github.com/RoaringBitmap/roaring"
+	"github.com/RoaringBitmap/roaring/roaring64"
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
@@ -208,7 +208,7 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
-	err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring.Bitmap).Remove, it))
+	err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Remove, it))
 	if err != nil && !errors.Is(err, cacheDisabled) {
 		r.logger.Errorf("unable to remote item %s from collection index: %s", it.GetLink(), err)
 	}
@@ -381,7 +381,7 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
-	err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring.Bitmap).Add, it))
+	err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Add, it))
 	if err != nil && !errors.IsNotImplemented(err) {
 		r.logger.Debugf("unable to add item %s to collection index: %s", it.GetLink(), err)
 	}
