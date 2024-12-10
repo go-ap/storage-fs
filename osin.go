@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
 	"github.com/openshift/osin"
 )
@@ -25,18 +26,18 @@ type cl struct {
 	Id          string
 	Secret      string
 	RedirectUri string
-	Extra       any
+	UserData    any
 }
 
 type auth struct {
-	Client      string
+	Client      cl
 	Code        string
 	ExpiresIn   time.Duration
 	Scope       string
 	RedirectURI string
 	State       string
 	CreatedAt   time.Time
-	Extra       any
+	UserData    vocab.IRI
 }
 
 type acc struct {
@@ -169,7 +170,7 @@ func (r *repo) ListClients() ([]osin.Client, error) {
 			Id:          cl.Id,
 			Secret:      cl.Secret,
 			RedirectUri: cl.RedirectUri,
-			UserData:    cl.Extra,
+			UserData:    cl.UserData,
 		}
 		clients = append(clients, &d)
 		return nil
@@ -188,7 +189,7 @@ func (r *repo) loadClientFromPath(clientPath string) (osin.Client, error) {
 		c.Id = cl.Id
 		c.Secret = cl.Secret
 		c.RedirectUri = cl.RedirectUri
-		c.UserData = cl.Extra
+		c.UserData = cl.UserData
 		return nil
 	})
 	return c, err
@@ -276,7 +277,7 @@ func (r *repo) UpdateClient(c osin.Client) error {
 		Id:          c.GetId(),
 		Secret:      c.GetSecret(),
 		RedirectUri: c.GetRedirectUri(),
-		Extra:       c.GetUserData(),
+		UserData:    c.GetUserData(),
 	}
 	clientPath := r.oauthClientPath(clientsBucket, cl.Id)
 	if err = createFolderIfNotExists(clientPath); err != nil {
@@ -308,52 +309,55 @@ func (r *repo) SaveAuthorize(data *osin.AuthorizeData) error {
 	}
 	defer r.Close()
 
-	auth := auth{
-		Client:      data.Client.GetId(),
+	a := auth{
+		Client: cl{
+			Id:          data.Client.GetId(),
+			Secret:      data.Client.GetSecret(),
+			RedirectUri: data.Client.GetRedirectUri(),
+			UserData:    data.Client.GetUserData(),
+		},
 		Code:        data.Code,
 		ExpiresIn:   time.Duration(data.ExpiresIn),
 		Scope:       data.Scope,
 		RedirectURI: data.RedirectUri,
 		State:       data.State,
 		CreatedAt:   data.CreatedAt.UTC(),
-		Extra:       data.UserData,
 	}
-	authorizePath := r.oauthPath(authorizeBucket, auth.Code)
+	if data.UserData != nil {
+		a.UserData = data.UserData.(vocab.IRI)
+	}
+	authorizePath := r.oauthPath(authorizeBucket, a.Code)
 	if err = createFolderIfNotExists(authorizePath); err != nil {
 		return errors.Annotatef(err, "Invalid path %s", authorizePath)
 	}
-	return putItem(authorizePath, auth)
+	return putItem(authorizePath, data)
 }
 
 func (r *repo) loadAuthorizeFromPath(authPath string) (*osin.AuthorizeData, error) {
 	data := new(osin.AuthorizeData)
 	_, err := r.loadFromOauthPath(authPath, func(raw []byte) error {
-		auth := auth{}
-		if err := decodeFn(raw, &auth); err != nil {
+		a := auth{}
+		if err := decodeFn(raw, &a); err != nil {
 			return errors.Annotatef(err, "Unable to unmarshal client object")
 		}
-		data.Code = auth.Code
-		data.ExpiresIn = int32(auth.ExpiresIn)
-		data.Scope = auth.Scope
-		data.RedirectUri = auth.RedirectURI
-		data.State = auth.State
-		data.CreatedAt = auth.CreatedAt
-		data.UserData = auth.Extra
+		data.Code = a.Code
+		data.ExpiresIn = int32(a.ExpiresIn)
+		data.Scope = a.Scope
+		data.RedirectUri = a.RedirectURI
+		data.State = a.State
+		data.CreatedAt = a.CreatedAt
+		data.UserData = a.UserData
 
 		if data.ExpireAt().Before(time.Now().UTC()) {
 			err := errors.Errorf("Token expired at %s.", data.ExpireAt().String())
-			r.logger.Errorf("Code %s: %s", auth.Code, err)
-			return err
-		}
-		cl, err := r.loadClientFromPath(r.oauthClientPath(clientsBucket, auth.Client))
-		if err != nil {
+			r.logger.Errorf("Code %s: %s", a.Code, err)
 			return err
 		}
 		data.Client = &osin.DefaultClient{
-			Id:          cl.GetId(),
-			Secret:      cl.GetSecret(),
-			RedirectUri: cl.GetRedirectUri(),
-			UserData:    cl.GetUserData(),
+			Id:          a.Client.Id,
+			Secret:      a.Client.Secret,
+			RedirectUri: a.Client.RedirectUri,
+			UserData:    a.Client.UserData,
 		}
 		return nil
 	})
