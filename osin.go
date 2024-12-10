@@ -1,8 +1,6 @@
 package fs
 
 import (
-	"bytes"
-	"encoding/json"
 	"os"
 	"path"
 	"path/filepath"
@@ -56,16 +54,6 @@ type acc struct {
 
 type ref struct {
 	Access string
-}
-
-var encodeFn = func(v any) ([]byte, error) {
-	buf := bytes.Buffer{}
-	err := json.NewEncoder(&buf).Encode(v)
-	return buf.Bytes(), err
-}
-
-var decodeFn = func(data []byte, m any) error {
-	return json.NewDecoder(bytes.NewReader(data)).Decode(m)
 }
 
 func interfaceIsNil(c any) bool {

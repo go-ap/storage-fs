@@ -1,12 +1,14 @@
 package fs
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/dsa"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	xerrors "errors"
 	"fmt"
@@ -1340,4 +1342,14 @@ func getwd() (string, error) {
 		return testCWD, nil
 	}
 	return os.Getwd()
+}
+
+var encodeFn = func(v any) ([]byte, error) {
+	buf := bytes.Buffer{}
+	err := json.NewEncoder(&buf).Encode(v)
+	return buf.Bytes(), err
+}
+
+var decodeFn = func(data []byte, m any) error {
+	return json.NewDecoder(bytes.NewReader(data)).Decode(m)
 }
