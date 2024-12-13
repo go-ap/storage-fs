@@ -988,19 +988,19 @@ func loadFilteredPropsForActivity(r *repo, fil ...filters.Check) func(a *vocab.A
 }
 
 func loadFilteredPropsForIntransitiveActivity(r *repo, fil ...filters.Check) func(a *vocab.IntransitiveActivity) error {
-	actorChecks := filters.ActorChecks(fil...)
+	//actorChecks := filters.ActorChecks(fil...)
 	targetChecks := filters.TargetChecks(fil...)
 	return func(a *vocab.IntransitiveActivity) error {
 		var err error
-		if !vocab.IsNil(a.Actor) {
-			if a.ID.Equals(a.Actor.GetLink(), false) {
-				//r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
-				return errors.BadGatewayf("invalid activity with id %s, referencing itself as an actor: %s", a.ID, a.Actor.GetLink())
-			}
-			if a.Actor, err = dereferenceItemAndFilter(r, a.Actor, actorChecks...); err != nil {
-				return err
-			}
-		}
+		//if !vocab.IsNil(a.Actor) {
+		//	if a.ID.Equals(a.Actor.GetLink(), false) {
+		//		//r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
+		//		return errors.BadGatewayf("invalid activity with id %s, referencing itself as an actor: %s", a.ID, a.Actor.GetLink())
+		//	}
+		//	if a.Actor, err = dereferenceItemAndFilter(r, a.Actor, actorChecks...); err != nil {
+		//		return err
+		//	}
+		//}
 		if !vocab.IsNil(a.Target) {
 			if a.ID.Equals(a.Target.GetLink(), false) {
 				//r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original object. (%s)", a.Type, a.ID)
