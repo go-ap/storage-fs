@@ -85,9 +85,8 @@ func (r *repo) searchIndex(col vocab.Item, ff ...filters.Check) (vocab.ItemColle
 
 	bmp := filters.Checks(ff).IndexMatch(i.all)
 	colBmp := roaring64.New()
-	if err := r.loadBinFromFile(idxPath, colBmp); err == nil {
-		bmp.And(colBmp)
-	}
+	_ = r.loadBinFromFile(idxPath, colBmp)
+	bmp.And(colBmp)
 	if bmp.IsEmpty() {
 		return nil, nil
 	}
