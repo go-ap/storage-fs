@@ -9,7 +9,7 @@ require (
 	github.com/go-ap/cache v0.0.0-20241212161714-4a400f2fb66b
 	github.com/go-ap/errors v0.0.0-20241212155021-5a598b6bf467
 	github.com/go-ap/filters v0.0.0-20241212161731-6700826ce543
-	github.com/go-ap/processing v0.0.0-20241212200242-801c045ee1ef
+	github.com/go-ap/processing v0.0.0-20241216191157-a7d3ba1f9663
 	github.com/openshift/osin v1.0.2-0.20220317075346-0f4d38c6e53f
 	golang.org/x/crypto v0.31.0
 	golang.org/x/sys v0.28.0
@@ -23,7 +23,7 @@ require (
 	github.com/bits-and-blooms/bitset v1.19.1 // indirect
 	github.com/go-ap/client v0.0.0-20241212174032-4826270ad6a3 // indirect
 	github.com/go-ap/jsonld v0.0.0-20221030091449-f2a191312c73 // indirect
-	github.com/go-chi/chi/v5 v5.1.0 // indirect
+	github.com/go-chi/chi/v5 v5.2.0 // indirect
 	github.com/go-fed/httpsig v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jdkato/prose v1.2.1 // indirect
