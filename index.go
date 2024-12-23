@@ -44,23 +44,23 @@ func newBitmap(typ ...index.Type) *bitmaps {
 		case index.ByID:
 			b.all[tt] = index.All()
 		case index.ByType:
-			b.all[tt] = index.TokenBitmap(index.ExtractType)
+			b.all[tt] = index.NewTokenIndex(index.ExtractType)
 		case index.ByName:
-			b.all[tt] = index.TokenBitmap(index.ExtractName)
+			b.all[tt] = index.NewTokenIndex(index.ExtractName)
 		case index.ByPreferredUsername:
-			b.all[tt] = index.TokenBitmap(index.ExtractPreferredUsername)
+			b.all[tt] = index.NewTokenIndex(index.ExtractPreferredUsername)
 		case index.BySummary:
-			b.all[tt] = index.TokenBitmap(index.ExtractSummary)
+			b.all[tt] = index.NewTokenIndex(index.ExtractSummary)
 		case index.ByContent:
-			b.all[tt] = index.TokenBitmap(index.ExtractContent)
+			b.all[tt] = index.NewTokenIndex(index.ExtractContent)
 		case index.ByActor:
-			b.all[tt] = index.TokenBitmap(index.ExtractActor)
+			b.all[tt] = index.NewTokenIndex(index.ExtractActor)
 		case index.ByObject:
-			b.all[tt] = index.TokenBitmap(index.ExtractObject)
+			b.all[tt] = index.NewTokenIndex(index.ExtractObject)
 		case index.ByRecipients:
-			b.all[tt] = index.TokenBitmap(index.ExtractRecipients)
+			b.all[tt] = index.NewTokenIndex(index.ExtractRecipients)
 		case index.ByAttributedTo:
-			b.all[tt] = index.TokenBitmap(index.ExtractAttributedTo)
+			b.all[tt] = index.NewTokenIndex(index.ExtractAttributedTo)
 		}
 	}
 	return &b
