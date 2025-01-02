@@ -9,7 +9,7 @@ require (
 	github.com/go-ap/cache v0.0.0-20241228091143-603fda798574
 	github.com/go-ap/errors v0.0.0-20241212155021-5a598b6bf467
 	github.com/go-ap/filters v0.0.0-20241228091325-b92f78983bb6
-	github.com/go-ap/processing v0.0.0-20241228091655-8f33f4bd24e0
+	github.com/go-ap/processing v0.0.0-20250104102953-9cc882c4c2f4
 	github.com/openshift/osin v1.0.2-0.20220317075346-0f4d38c6e53f
 	golang.org/x/crypto v0.31.0
 	golang.org/x/sys v0.28.0
@@ -21,7 +21,7 @@ require (
 	git.sr.ht/~mariusor/mask v0.0.0-20240327084502-ef2a9438457e // indirect
 	git.sr.ht/~mariusor/ssm v0.0.0-20241220163816-32d18afe7b22 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
-	github.com/go-ap/client v0.0.0-20241228091406-581647f214a8 // indirect
+	github.com/go-ap/client v0.0.0-20250103161204-b38446bde73b // indirect
 	github.com/go-ap/jsonld v0.0.0-20221030091449-f2a191312c73 // indirect
 	github.com/go-chi/chi/v5 v5.2.0 // indirect
 	github.com/go-fed/httpsig v1.1.0 // indirect
