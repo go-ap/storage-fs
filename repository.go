@@ -286,31 +286,33 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 	var link vocab.IRI
 	var col vocab.Item
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
-	if !isHiddenCollectionKey(r.itemStoragePath(colIRI)) {
-		itPath := r.itemStoragePath(colIRI)
-		if col, err = r.loadItemFromPath(getObjectKey(itPath)); err != nil {
+	itPath := r.itemStoragePath(colIRI)
+	col, err = r.loadItemFromPath(getObjectKey(itPath))
+	if err != nil && !isHiddenCollectionKey(itPath) {
+		return err
+	}
+	if col == nil && isHiddenCollectionKey(itPath) {
+		// NOTE(marius): for hidden collections we might not have the __raw file on disk, so we just try to create it
+		if col, err = createCollection(r, colIRI); err != nil {
 			return err
 		}
-		parent, destination := allStorageCollections.Split(colIRI)
-		if isStorageCollectionKey(string(destination)) {
-			// Create the collection on the object, if it doesn't exist
-			i, err := r.loadFromIRI(parent, filters.WithMaxCount(1))
-			if err != nil {
-				return err
-			}
-			if p, ok := destination.AddTo(i); ok {
-				_, _ = save(r, i)
-				link = p
-			} else {
-				link = destination.IRI(i)
-			}
+	}
+
+	parent, destination := allStorageCollections.Split(colIRI)
+	if isStorageCollectionKey(string(destination)) {
+		// Create the collection on the object, if it doesn't exist
+		i, err := r.loadFromIRI(parent, filters.WithMaxCount(1))
+		if err != nil {
+			return err
+		}
+		if p, ok := destination.AddTo(i); ok {
+			_, _ = save(r, i)
+			link = p
 		} else {
-			return errors.Newf("Invalid collection %s", destination)
+			link = destination.IRI(i)
 		}
 	} else {
-		// NOTE(marius): for hidden collections we might not have the __raw file on disk, so we just wing it
-		link = colIRI
-		col = link
+		return errors.Newf("Invalid collection %s", destination)
 	}
 
 	linkPath := r.itemStoragePath(link)
