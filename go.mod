@@ -21,7 +21,7 @@ require (
 	git.sr.ht/~mariusor/mask v0.0.0-20250114195353-98705a6977b7 // indirect
 	git.sr.ht/~mariusor/ssm v0.0.0-20241220163816-32d18afe7b22 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
-	github.com/go-ap/client v0.0.0-20250125144537-69e660ad2115 // indirect
+	github.com/go-ap/client v0.0.0-20250126153921-26e3111da3d7 // indirect
 	github.com/go-ap/jsonld v0.0.0-20221030091449-f2a191312c73 // indirect
 	github.com/go-chi/chi/v5 v5.2.0 // indirect
 	github.com/go-fed/httpsig v1.1.0 // indirect

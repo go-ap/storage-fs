@@ -267,6 +267,7 @@ func createCollection(r *repo, colIRI vocab.IRI) (vocab.CollectionInterface, err
 	col := vocab.OrderedCollection{
 		ID:        colIRI,
 		Type:      vocab.OrderedCollectionType,
+		CC:        vocab.ItemCollection{vocab.PublicNS},
 		Published: time.Now().UTC(),
 	}
 	return saveCollection(r, &col)
@@ -1154,6 +1155,13 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 	}
 
 	_ = loadIndex(r)
+
+	// NOTE(marius): let's make sure that if we have filters for authorization/recipients
+	// we respect them for the collection itself.
+	ff := append(filters.AuthorizedChecks(fil...), filters.RecipientsChecks(fil...)...)
+	if it = ff.Filter(it); vocab.IsNil(it) {
+		return nil, errors.NewNotFound(err, "not found")
+	}
 
 	_ = vocab.OnObject(it, func(ob *vocab.Object) error {
 		ob.ID = iri
