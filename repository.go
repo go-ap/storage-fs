@@ -263,12 +263,15 @@ func saveCollection(r *repo, col vocab.CollectionInterface) (vocab.CollectionInt
 	return col, err
 }
 
-func createCollection(r *repo, colIRI vocab.IRI) (vocab.CollectionInterface, error) {
+func createCollection(r *repo, colIRI vocab.IRI, owner vocab.Item) (vocab.CollectionInterface, error) {
 	col := vocab.OrderedCollection{
 		ID:        colIRI,
 		Type:      vocab.OrderedCollectionType,
 		CC:        vocab.ItemCollection{vocab.PublicNS},
 		Published: time.Now().UTC(),
+	}
+	if !vocab.IsNil(owner) {
+		col.AttributedTo = owner.GetLink()
 	}
 	return saveCollection(r, &col)
 }
@@ -294,7 +297,11 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 	}
 	if col == nil && isHiddenCollectionKey(itPath) {
 		// NOTE(marius): for hidden collections we might not have the __raw file on disk, so we just try to create it
-		if col, err = createCollection(r, colIRI); err != nil {
+		// Here we assume the owner can be inferred from the collection IRI, but that's just a FedBOX implementation
+		// detail. We should find a different way to pass collection owner - maybe the processing package checks for
+		// existence of the blocked collection, and explicitly creates it if it doesn't.
+		maybeOwner, _ := vocab.Split(colIRI)
+		if col, err = createCollection(r, colIRI, maybeOwner); err != nil {
 			return err
 		}
 	}
@@ -669,21 +676,21 @@ func createCollections(r *repo, it vocab.Item) error {
 	}
 	if vocab.ActorTypes.Contains(it.GetType()) {
 		_ = vocab.OnActor(it, func(p *vocab.Actor) error {
-			p.Inbox, _ = createCollectionInPath(r, p.Inbox)
-			p.Outbox, _ = createCollectionInPath(r, p.Outbox)
-			p.Followers, _ = createCollectionInPath(r, p.Followers)
-			p.Following, _ = createCollectionInPath(r, p.Following)
-			p.Liked, _ = createCollectionInPath(r, p.Liked)
+			p.Inbox, _ = createCollectionInPath(r, p.Inbox, p)
+			p.Outbox, _ = createCollectionInPath(r, p.Outbox, p)
+			p.Followers, _ = createCollectionInPath(r, p.Followers, p)
+			p.Following, _ = createCollectionInPath(r, p.Following, p)
+			p.Liked, _ = createCollectionInPath(r, p.Liked, p)
 			// NOTE(marius): shadow creating hidden collections for Blocked and Ignored items
-			_, _ = createCollectionInPath(r, filters.BlockedType.Of(p))
-			_, _ = createCollectionInPath(r, filters.IgnoredType.Of(p))
+			_, _ = createCollectionInPath(r, filters.BlockedType.Of(p), p)
+			_, _ = createCollectionInPath(r, filters.IgnoredType.Of(p), p)
 			return nil
 		})
 	}
 	return vocab.OnObject(it, func(o *vocab.Object) error {
-		o.Replies, _ = createCollectionInPath(r, o.Replies)
-		o.Likes, _ = createCollectionInPath(r, o.Likes)
-		o.Shares, _ = createCollectionInPath(r, o.Shares)
+		o.Replies, _ = createCollectionInPath(r, o.Replies, o)
+		o.Likes, _ = createCollectionInPath(r, o.Likes, o)
+		o.Shares, _ = createCollectionInPath(r, o.Shares, o)
 		return nil
 	})
 }
@@ -701,7 +708,7 @@ func getObjectKey(p string) string {
 	return path.Join(p, objectKey)
 }
 
-func createCollectionInPath(r *repo, it vocab.Item) (vocab.Item, error) {
+func createCollectionInPath(r *repo, it, owner vocab.Item) (vocab.Item, error) {
 	if vocab.IsNil(it) {
 		return nil, nil
 	}
@@ -709,7 +716,7 @@ func createCollectionInPath(r *repo, it vocab.Item) (vocab.Item, error) {
 
 	colObject, err := r.loadItemFromPath(getObjectKey(itPath))
 	if colObject == nil {
-		it, err = createCollection(r, it.GetLink())
+		it, err = createCollection(r, it.GetLink(), owner)
 	}
 	if err != nil {
 		return nil, errors.Annotatef(err, "saving collection object is not done")
@@ -869,7 +876,7 @@ func onCollection(r *repo, col vocab.Item, it vocab.Item, fn func(p string) erro
 	if vocab.IsNil(it) {
 		return errors.Newf("Unable to operate on nil element")
 	}
-	if len(col.GetLink()) == 0 {
+	if vocab.IsNil(col) || len(col.GetLink()) == 0 {
 		return errors.Newf("Unable to find collection")
 	}
 	if len(it.GetLink()) == 0 {
