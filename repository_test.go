@@ -360,12 +360,14 @@ func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
 func Test_repo_createCollection(t *testing.T) {
 	tests := []struct {
 		name     string
+		owner    vocab.Item
 		iri      vocab.IRI
 		expected vocab.CollectionInterface
 		wantErr  bool
 	}{
 		{
 			name:     "example.com/replies",
+			owner:    &vocab.Actor{ID: "https://example.com"},
 			iri:      "https://example.com/replies",
 			expected: expectedCol("https://example.com/replies"),
 			wantErr:  false,
@@ -379,7 +381,7 @@ func Test_repo_createCollection(t *testing.T) {
 				cache:  cache.New(false),
 				logger: lw.Dev(),
 			}
-			col, err := createCollectionInPath(r, tt.iri)
+			col, err := createCollectionInPath(r, tt.iri, tt.owner)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
 			}

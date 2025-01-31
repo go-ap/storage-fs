@@ -1165,9 +1165,9 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 
 	// NOTE(marius): let's make sure that if we have filters for authorization/recipients
 	// we respect them for the collection itself.
-	ff := filters.AuthorizedChecks(fil...)
-	if it = ff.Filter(it); vocab.IsNil(it) {
-		return nil, errors.NewNotFound(err, "not found")
+	authCheck := filters.AuthorizedChecks(fil...)
+	if it = authCheck.Filter(it); vocab.IsNil(it) {
+		return nil, errors.NewForbidden(err, "forbidden")
 	}
 
 	_ = vocab.OnObject(it, func(ob *vocab.Object) error {
