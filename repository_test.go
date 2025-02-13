@@ -71,7 +71,7 @@ func Test_New(t *testing.T) {
 			if got.cwd != tt.want.cwd {
 				t.Errorf("New().cwd = %v, want %v", got.cwd, tt.want.cwd)
 			}
-			if got.opened != tt.want.opened {
+			if got.opened.Load() != tt.want.opened {
 				t.Errorf("New().opened = %v, want %v", got.opened, tt.want.opened)
 			}
 		})
@@ -100,10 +100,10 @@ func Test_repo_Open(t *testing.T) {
 			r := &repo{
 				path:   tt.fields.path,
 				cwd:    tt.fields.cwd,
-				opened: tt.fields.opened,
 				cache:  tt.fields.cache,
 				logger: lw.Dev(),
 			}
+			r.opened.Store(tt.fields.opened)
 			if err := r.Open(); !errors.Is(err, tt.wantErr) {
 				t.Errorf("Open() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -336,7 +336,8 @@ func Test_repo_Load(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{path: mocksPath, opened: true}
+			r := &repo{path: mocksPath}
+			r.opened.Store(true)
 			got, err := r.Load(tt.args.iri, tt.args.fil...)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
@@ -377,7 +378,6 @@ func Test_repo_createCollection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &repo{
 				path:   t.TempDir(),
-				opened: false,
 				cache:  cache.New(false),
 				logger: lw.Dev(),
 			}

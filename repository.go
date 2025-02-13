@@ -19,6 +19,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"git.sr.ht/~mariusor/lw"
@@ -78,7 +79,7 @@ func New(c Config) (*repo, error) {
 type repo struct {
 	path   string
 	cwd    string
-	opened bool
+	opened atomic.Bool
 	index  *bitmaps
 	cache  cache.CanStore
 	logger lw.Logger
@@ -86,22 +87,22 @@ type repo struct {
 
 // Open
 func (r *repo) Open() error {
-	if r.opened {
+	if r.opened.Load() {
 		return nil
 	}
 	// NOTE(marius): this is needed in order that the relative symlinks used for collection items to work
 	if err := os.Chdir(r.path); err != nil {
 		return err
 	}
-	r.opened = true
+	r.opened.Store(true)
 	return nil
 }
 
 func (r *repo) close() error {
-	if !r.opened {
+	if !r.opened.Load() {
 		return nil
 	}
-	r.opened = false
+	r.opened.Store(false)
 	return os.Chdir(r.cwd)
 }
 
