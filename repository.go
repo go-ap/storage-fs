@@ -211,6 +211,24 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
+	if orderedCollectionTypes.Contains(col.GetType()) {
+		err = vocab.OnOrderedCollection(col, func(c *vocab.OrderedCollection) error {
+			c.TotalItems -= 1
+			c.OrderedItems = nil
+			return nil
+		})
+	} else if collectionTypes.Contains(col.GetType()) {
+		err = vocab.OnCollection(col, func(c *vocab.Collection) error {
+			c.TotalItems -= 1
+			c.Items = nil
+			return nil
+		})
+	}
+
+	if _, err = save(r, col); err != nil {
+		return err
+	}
+
 	err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Remove, it))
 	if err != nil && !errors.Is(err, cacheDisabled) {
 		r.logger.Errorf("unable to remote item %s from collection index: %s", it.GetLink(), err)
