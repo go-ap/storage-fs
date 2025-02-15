@@ -25,10 +25,10 @@ import (
 	"git.sr.ht/~mariusor/lw"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	vocab "github.com/go-ap/activitypub"
+	au "github.com/go-ap/auth"
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
 	"github.com/go-ap/filters"
-	"github.com/go-ap/processing"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -450,7 +450,7 @@ func (r *repo) PasswordSet(it vocab.Item, pw []byte) error {
 	if err != nil {
 		return errors.Annotatef(err, "could not generate pw hash")
 	}
-	m := processing.Metadata{
+	m := Metadata{
 		Pw: pw,
 	}
 	return r.SaveMetadata(m, it.GetLink())
@@ -470,7 +470,7 @@ func (r *repo) PasswordCheck(it vocab.Item, pw []byte) error {
 }
 
 // LoadMetadata
-func (r *repo) LoadMetadata(iri vocab.IRI) (*processing.Metadata, error) {
+func (r *repo) LoadMetadata(iri vocab.IRI) (*Metadata, error) {
 	err := r.Open()
 	defer r.Close()
 	if err != nil {
@@ -483,7 +483,7 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*processing.Metadata, error) {
 		err = errors.NewNotFound(asPathErr(err, r.path), "Could not find metadata in path %s", sanitizePath(p, r.path))
 		return nil, err
 	}
-	m := new(processing.Metadata)
+	m := new(Metadata)
 	if err = decodeFn(raw, m); err != nil {
 		return nil, errors.Annotatef(err, "Could not unmarshal metadata")
 	}
@@ -491,7 +491,7 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*processing.Metadata, error) {
 }
 
 // SaveMetadata
-func (r *repo) SaveMetadata(m processing.Metadata, iri vocab.IRI) error {
+func (r *repo) SaveMetadata(m Metadata, iri vocab.IRI) error {
 	err := r.Open()
 	defer r.Close()
 	if err != nil {
@@ -537,6 +537,8 @@ func (r *repo) LoadKey(iri vocab.IRI) (crypto.PrivateKey, error) {
 	return prvKey, nil
 }
 
+type Metadata = au.Metadata
+
 // SaveKey saves a private key for an actor found by its IRI
 func (r *repo) SaveKey(iri vocab.IRI, key crypto.PrivateKey) (vocab.Item, error) {
 	ob, err := r.loadOneFromIRI(iri)
@@ -561,7 +563,7 @@ func (r *repo) SaveKey(iri vocab.IRI, key crypto.PrivateKey) (vocab.Item, error)
 		r.logger.Debugf("actor %s already has a private key", iri)
 	}
 
-	m = new(processing.Metadata)
+	m = new(Metadata)
 	prvEnc, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		r.logger.Errorf("unable to x509.MarshalPKCS8PrivateKey() the private key %T for %s", key, iri)
