@@ -559,11 +559,13 @@ func (r *repo) SaveKey(iri vocab.IRI, key crypto.PrivateKey) (vocab.Item, error)
 	if err != nil && !errors.IsNotFound(err) {
 		return ob, err
 	}
-	if m != nil && m.PrivateKey != nil {
+	if m == nil {
+		m = new(Metadata)
+	}
+	if m.PrivateKey != nil {
 		r.logger.Debugf("actor %s already has a private key", iri)
 	}
 
-	m = new(Metadata)
 	prvEnc, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		r.logger.Errorf("unable to x509.MarshalPKCS8PrivateKey() the private key %T for %s", key, iri)
