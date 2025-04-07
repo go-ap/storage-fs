@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -22,7 +23,7 @@ func saveFsClients(base string, clients ...cl) error {
 }
 
 func saveFsItem(it any, basePath string) error {
-	if err := os.MkdirAll(basePath, defaultPerm); err != nil {
+	if err := os.MkdirAll(basePath, defaultDirPerm); err != nil {
 		return err
 	}
 
@@ -54,24 +55,26 @@ func saveFsClient(client cl, basePath string) error {
 }
 
 func initialize(tempFolder string) *repo {
-	os.MkdirAll(path.Join(tempFolder, folder, clientsBucket), defaultPerm)
-	os.MkdirAll(path.Join(tempFolder, folder, accessBucket), defaultPerm)
-	os.MkdirAll(path.Join(tempFolder, folder, authorizeBucket), defaultPerm)
-	os.MkdirAll(path.Join(tempFolder, folder, refreshBucket), defaultPerm)
+	_ = os.MkdirAll(path.Join(tempFolder, folder, clientsBucket), defaultDirPerm)
+	_ = os.MkdirAll(path.Join(tempFolder, folder, accessBucket), defaultDirPerm)
+	_ = os.MkdirAll(path.Join(tempFolder, folder, authorizeBucket), defaultDirPerm)
+	_ = os.MkdirAll(path.Join(tempFolder, folder, refreshBucket), defaultDirPerm)
+
 	s := repo{path: tempFolder, logger: lw.Dev()}
 	return &s
 }
 
 func cleanup(tempFolder string) {
-	os.RemoveAll(tempFolder)
+	_ = os.RemoveAll(tempFolder)
 }
 
-func TestStor_Close(t *testing.T) {
+func Test_Close(t *testing.T) {
 	s := repo{}
+	s.root, _ = os.OpenRoot(os.TempDir())
 	s.Close()
 }
 
-func TestStor_Open(t *testing.T) {
+func Test_Open(t *testing.T) {
 	s := repo{path: t.TempDir()}
 	err := s.Open()
 	if err != nil {
@@ -104,11 +107,12 @@ var loadClientTests = map[string]struct {
 	},
 }
 
-func TestStor_ListClients(t *testing.T) {
+func Test_ListClients(t *testing.T) {
 	tempFolder := t.TempDir()
 	for name, tt := range loadClientTests {
 		s := initialize(tempFolder)
-		if err := saveFsClients(s.oauthPath(clientsBucket), tt.clients...); err != nil {
+		clientsPath := filepath.Join(tempFolder, folder, clientsBucket)
+		if err := saveFsClients(clientsPath, tt.clients...); err != nil {
 			t.Logf("Unable to save clients: %s", err)
 			cleanup(tempFolder)
 			continue
@@ -132,7 +136,7 @@ func TestStor_ListClients(t *testing.T) {
 	}
 }
 
-func TestStor_Clone(t *testing.T) {
+func Test_Clone(t *testing.T) {
 	s := new(repo)
 	ss := s.Clone()
 	s1, ok := ss.(*repo)
@@ -144,13 +148,14 @@ func TestStor_Clone(t *testing.T) {
 	}
 }
 
-func TestStor_GetClient(t *testing.T) {
+func Test_GetClient(t *testing.T) {
 	tempFolder := t.TempDir()
 	defer cleanup(tempFolder)
 	s := initialize(tempFolder)
 
 	for name, tt := range loadClientTests {
-		if err := saveFsClients(s.oauthPath(clientsBucket), tt.clients...); err != nil {
+		clientsPath := filepath.Join(tempFolder, folder, clientsBucket)
+		if err := saveFsClients(clientsPath, tt.clients...); err != nil {
 			t.Logf("Unable to save clients: %s", err)
 			continue
 		}
@@ -192,7 +197,7 @@ var createClientTests = map[string]struct {
 	},
 }
 
-func TestStor_CreateClient(t *testing.T) {
+func Test_CreateClient(t *testing.T) {
 	tempFolder := t.TempDir()
 	defer cleanup(tempFolder)
 	s := initialize(tempFolder)
@@ -206,7 +211,7 @@ func TestStor_CreateClient(t *testing.T) {
 			if tt.client == nil {
 				return
 			}
-			filePath := getObjectKey(s.oauthPath(clientsBucket, tt.client.Id))
+			filePath := getObjectKey(filepath.Join(tempFolder, folder, clientsBucket, tt.client.Id))
 			f, err := os.Open(filePath)
 			if err != nil {
 				t.Errorf("Unable to read %s client file: %s", filePath, err)
@@ -234,7 +239,7 @@ func TestStor_CreateClient(t *testing.T) {
 	}
 }
 
-func TestStor_UpdateClient(t *testing.T) {
+func Test_UpdateClient(t *testing.T) {
 	tempFolder := t.TempDir()
 	defer cleanup(tempFolder)
 	s := initialize(tempFolder)
@@ -248,7 +253,7 @@ func TestStor_UpdateClient(t *testing.T) {
 			if tt.client == nil {
 				return
 			}
-			filePath := getObjectKey(s.oauthPath(clientsBucket, tt.client.Id))
+			filePath := getObjectKey(filepath.Join(tempFolder, folder, clientsBucket, tt.client.Id))
 			f, err := os.Open(filePath)
 			if err != nil {
 				t.Errorf("Unable to read %s client file: %s", filePath, err)
@@ -273,39 +278,39 @@ func TestStor_UpdateClient(t *testing.T) {
 	}
 }
 
-func TestStor_LoadAuthorize(t *testing.T) {
+func Test_LoadAuthorize(t *testing.T) {
 	t.Skipf("TODO")
 }
 
-func TestStor_LoadAccess(t *testing.T) {
+func Test_LoadAccess(t *testing.T) {
 	t.Skipf("TODO")
 }
 
-func TestStor_LoadRefresh(t *testing.T) {
+func Test_LoadRefresh(t *testing.T) {
 	t.Skipf("TODO")
 }
 
-func TestStor_RemoveAccess(t *testing.T) {
+func Test_RemoveAccess(t *testing.T) {
 	t.Skipf("TODO")
 }
 
-func TestStor_RemoveAuthorize(t *testing.T) {
+func Test_RemoveAuthorize(t *testing.T) {
 	t.Skipf("TODO")
 }
 
-func TestStor_RemoveClient(t *testing.T) {
+func Test_RemoveClient(t *testing.T) {
 	t.Skipf("TODO")
 }
 
-func TestStor_RemoveRefresh(t *testing.T) {
+func Test_RemoveRefresh(t *testing.T) {
 	t.Skipf("TODO")
 }
 
-func TestStor_SaveAccess(t *testing.T) {
+func Test_SaveAccess(t *testing.T) {
 	t.Skipf("TODO")
 }
 
-func TestStor_SaveAuthorize(t *testing.T) {
+func Test_SaveAuthorize(t *testing.T) {
 	t.Skipf("TODO")
 }
 

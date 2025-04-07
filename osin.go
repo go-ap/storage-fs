@@ -1,6 +1,8 @@
 package fs
 
 import (
+	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,7 +16,10 @@ import (
 )
 
 const (
-	defaultPerm     = os.ModeDir | os.ModePerm | 0700
+	defaultDirPerm      = os.ModePerm | 0700
+	defaultFilePerm     = os.ModePerm | 0600
+	defaultNewFileFlags = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+
 	clientsBucket   = "clients"
 	authorizeBucket = "authorize"
 	accessBucket    = "access"
@@ -61,18 +66,26 @@ func interfaceIsNil(c any) bool {
 	return reflect.ValueOf(c).Kind() == reflect.Ptr && reflect.ValueOf(c).IsNil()
 }
 
-func mkDirIfNotExists(p string) (err error) {
-	p, err = filepath.Abs(p)
-	if err != nil {
-		return err
-	}
-	fi, err := os.Stat(p)
-	if err != nil && os.IsNotExist(err) {
-		if err = os.MkdirAll(p, defaultPerm); err != nil {
+func (r *repo) mkDirIfNotExists(p string) (err error) {
+	fi, err := r.root.Stat(p)
+	if err == nil {
+		return nil
+	} else {
+		if os.IsExist(err) {
+			return nil
+		}
+		if !os.IsNotExist(err) {
 			return err
 		}
-		fi, err = os.Stat(p)
 	}
+	pieces := strings.Split(p, string(os.PathSeparator))
+	for i := range pieces {
+		pp := filepath.Join(pieces[:i+1]...)
+		if err = r.root.Mkdir(pp, defaultDirPerm); err != nil && !os.IsExist(err) {
+			return err
+		}
+	}
+	fi, err = r.root.Stat(p)
 	if err != nil {
 		return err
 	}
@@ -95,22 +108,15 @@ func getOauthObjectKey(p string) string {
 	return path.Join(p, oauthObjectKey)
 }
 
-func loadRawFromOauthPath(itPath string) ([]byte, error) {
-	f, err := os.Open(itPath)
+func (r *repo) loadRawFromOauthPath(itPath string) ([]byte, error) {
+	f, err := r.root.Open(itPath)
 	if err != nil {
 		return nil, errors.Annotatef(err, "Unable find path %s", itPath)
 	}
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, errors.Annotatef(err, "Unable stat file at path %s", itPath)
-	}
-	raw := make([]byte, fi.Size())
-	cnt, err := f.Read(raw)
+
+	raw, err := io.ReadAll(f)
 	if err != nil {
 		return nil, errors.Annotatef(err, "Unable read file at path %s", itPath)
-	}
-	if cnt != len(raw) {
-		return nil, errors.Annotatef(err, "Unable read the whole file at path %s", itPath)
 	}
 	return raw, nil
 }
@@ -119,12 +125,12 @@ func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) (ui
 	var err error
 	var cnt uint = 0
 	if isOauthStorageCollectionKey(itPath) {
-		err = filepath.WalkDir(itPath, func(p string, info os.DirEntry, err error) error {
+		err = fs.WalkDir(r.root.FS(), itPath, func(p string, info os.DirEntry, err error) error {
 			if err != nil && os.IsNotExist(err) {
 				return errors.NotFoundf("%s not found", sanitizePath(p, r.path))
 			}
 
-			it, _ := loadRawFromOauthPath(getOauthObjectKey(p))
+			it, _ := r.loadRawFromOauthPath(getOauthObjectKey(p))
 			if it != nil {
 				if err := loaderFn(it); err == nil {
 					cnt++
@@ -134,7 +140,7 @@ func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) (ui
 		})
 	} else {
 		var raw []byte
-		raw, err = loadRawFromOauthPath(getOauthObjectKey(itPath))
+		raw, err = r.loadRawFromOauthPath(getOauthObjectKey(itPath))
 		if err != nil {
 			return cnt, errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
@@ -196,15 +202,16 @@ func (r *repo) loadClientFromPath(clientPath string) (osin.Client, error) {
 }
 
 func (r *repo) oauthPath(pieces ...string) string {
-	pieces = append([]string{r.path, folder}, pieces...)
+	pieces = append([]string{folder}, pieces...)
 	return filepath.Join(pieces...)
 }
 
 func (r *repo) oauthClientPath(pieces ...string) string {
 	for i := range pieces {
 		pieces[i] = strings.Replace(pieces[i], "https://", "", 1)
+		pieces[i] = strings.Replace(pieces[i], "http://", "", 1)
 	}
-	pieces = append([]string{r.path, folder}, pieces...)
+	pieces = append([]string{folder}, pieces...)
 	return filepath.Join(pieces...)
 }
 
@@ -221,30 +228,18 @@ func (r *repo) GetClient(id string) (osin.Client, error) {
 	return r.loadClientFromPath(r.oauthClientPath(clientsBucket, id))
 }
 
-func createFolderIfNotExists(p string) error {
-	if _, err := os.Open(p); err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-		if err = os.MkdirAll(p, os.ModeDir|os.ModePerm|0770); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func putItem(basePath string, it any) error {
+func (r *repo) putItem(basePath string, it any) error {
 	raw, err := encodeFn(it)
 	if err != nil {
 		return errors.Annotatef(err, "Unable to marshal %T", it)
 	}
-	return putRaw(basePath, raw)
+	return r.putRaw(basePath, raw)
 }
 
-func putRaw(basePath string, raw []byte) error {
+func (r *repo) putRaw(basePath string, raw []byte) error {
 	filePath := getOauthObjectKey(basePath)
 
-	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	f, err := r.root.OpenFile(filePath, defaultNewFileFlags, defaultFilePerm)
 	if err != nil {
 		return errors.Annotatef(err, "Unable to save data to path %s", filePath)
 	}
@@ -269,10 +264,6 @@ func (r *repo) UpdateClient(c osin.Client) error {
 		return errors.Annotatef(err, "Unable to open fs *repositoryage")
 	}
 	defer r.Close()
-	if err != nil {
-		r.logger.Errorf("Failed to update client id: %s: %+s", c.GetId(), err)
-		return errors.Annotatef(err, "Invalid user-data")
-	}
 	cl := cl{
 		Id:          c.GetId(),
 		Secret:      c.GetSecret(),
@@ -280,10 +271,10 @@ func (r *repo) UpdateClient(c osin.Client) error {
 		UserData:    c.GetUserData(),
 	}
 	clientPath := r.oauthClientPath(clientsBucket, cl.Id)
-	if err = createFolderIfNotExists(clientPath); err != nil {
+	if err = r.mkDirIfNotExists(clientPath); err != nil {
 		return errors.Annotatef(err, "Invalid path %s", clientPath)
 	}
-	return putItem(clientPath, cl)
+	return r.putItem(clientPath, cl)
 }
 
 // CreateClient
@@ -327,10 +318,10 @@ func (r *repo) SaveAuthorize(data *osin.AuthorizeData) error {
 		a.UserData = data.UserData.(vocab.IRI)
 	}
 	authorizePath := r.oauthPath(authorizeBucket, a.Code)
-	if err = createFolderIfNotExists(authorizePath); err != nil {
+	if err = r.mkDirIfNotExists(authorizePath); err != nil {
 		return errors.Annotatef(err, "Invalid path %s", authorizePath)
 	}
-	return putItem(authorizePath, data)
+	return r.putItem(authorizePath, data)
 }
 
 func (r *repo) loadAuthorizeFromPath(authPath string) (*osin.AuthorizeData, error) {
@@ -410,10 +401,10 @@ func (r *repo) SaveAccess(data *osin.AccessData) error {
 			Access: data.AccessToken,
 		}
 		refreshPath := r.oauthPath(refreshBucket, data.RefreshToken)
-		if err = createFolderIfNotExists(refreshPath); err != nil {
+		if err = r.mkDirIfNotExists(refreshPath); err != nil {
 			return errors.Annotatef(err, "Invalid path %s", refreshPath)
 		}
-		if err := putItem(refreshPath, ref); err != nil {
+		if err := r.putItem(refreshPath, ref); err != nil {
 			return err
 		}
 	}
@@ -435,10 +426,10 @@ func (r *repo) SaveAccess(data *osin.AccessData) error {
 		Extra:        data.UserData,
 	}
 	authorizePath := r.oauthPath(accessBucket, acc.AccessToken)
-	if err = createFolderIfNotExists(authorizePath); err != nil {
+	if err = r.mkDirIfNotExists(authorizePath); err != nil {
 		return errors.Annotatef(err, "Invalid path %s", authorizePath)
 	}
-	return putItem(authorizePath, acc)
+	return r.putItem(authorizePath, acc)
 }
 
 func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {

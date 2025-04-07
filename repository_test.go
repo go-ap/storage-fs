@@ -17,10 +17,8 @@ import (
 )
 
 type fields struct {
-	path   string
-	cwd    string
-	opened bool
-	cache  cache.CanStore
+	path  string
+	cache cache.CanStore
 }
 
 func Test_New(t *testing.T) {
@@ -42,7 +40,6 @@ func Test_New(t *testing.T) {
 			config: Config{Path: testFolder},
 			want: fields{
 				path: testFolder,
-				cwd:  testCWD,
 			},
 		},
 		{
@@ -66,13 +63,7 @@ func Test_New(t *testing.T) {
 				return
 			}
 			if got.path != tt.want.path {
-				t.Errorf("New().path = %v, want %v", got.path, tt.want.path)
-			}
-			if got.cwd != tt.want.cwd {
-				t.Errorf("New().cwd = %v, want %v", got.cwd, tt.want.cwd)
-			}
-			if got.opened.Load() != tt.want.opened {
-				t.Errorf("New().opened = %v, want %v", got.opened, tt.want.opened)
+				t.Errorf("New().path = %v, want %v", got.root, tt.want.path)
 			}
 		})
 	}
@@ -99,19 +90,14 @@ func Test_repo_Open(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &repo{
 				path:   tt.fields.path,
-				cwd:    tt.fields.cwd,
 				cache:  tt.fields.cache,
 				logger: lw.Dev(),
 			}
-			r.opened.Store(tt.fields.opened)
 			if err := r.Open(); !errors.Is(err, tt.wantErr) {
 				t.Errorf("Open() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if r.path != tt.fields.path {
-				t.Errorf("Open() path is not correct = %s, want %s", r.path, tt.fields.path)
-			}
-			if r.cwd != tt.fields.path {
-				t.Errorf("Open() cwd path is not correct = %s, want %s", r.path, tt.fields.path)
+				t.Errorf("Open() path is not correct = %s, want %s", r.root.Name(), tt.fields.path)
 			}
 			defer r.Close()
 		})
@@ -337,7 +323,9 @@ func Test_repo_Load(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &repo{path: mocksPath}
-			r.opened.Store(true)
+			_ = r.Open()
+			defer r.Close()
+
 			got, err := r.Load(tt.args.iri, tt.args.fil...)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
@@ -381,6 +369,9 @@ func Test_repo_createCollection(t *testing.T) {
 				cache:  cache.New(false),
 				logger: lw.Dev(),
 			}
+			_ = r.Open()
+			defer r.Close()
+
 			col, err := createCollectionInPath(r, tt.iri, tt.owner)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)

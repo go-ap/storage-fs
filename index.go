@@ -96,10 +96,11 @@ func (r *repo) searchIndex(col vocab.Item, ff ...filters.Check) (vocab.ItemColle
 	for it.HasNext() {
 		x := it.Next()
 		if ip, ok := i.ref[x]; ok {
-			if !strings.Contains(ip, r.path) {
-				ip = filepath.Join(r.path, ip)
+			prefix := r.root.Name()
+			if !strings.Contains(ip, prefix) {
+				ip = filepath.Join(prefix, ip)
 			}
-			ob, err := loadItemFromPath(getObjectKey(ip))
+			ob, err := r.loadRawFromPath(getObjectKey(ip))
 			if err != nil {
 				continue
 			}
@@ -113,11 +114,11 @@ func (r *repo) searchIndex(col vocab.Item, ff ...filters.Check) (vocab.ItemColle
 const _indexDirName = ".index"
 
 func (r *repo) indexStoragePath() string {
-	return filepath.Join(r.path, _indexDirName)
+	return filepath.Join(_indexDirName)
 }
 
 func (r *repo) collectionIndexStoragePath(col vocab.IRI) string {
-	return filepath.Join(r.itemStoragePath(col), _indexDirName)
+	return filepath.Join(iriPath(col), _indexDirName)
 }
 
 func getIndexKey(typ index.Type) string {
@@ -149,7 +150,7 @@ func getIndexKey(typ index.Type) string {
 const _refName = ".ref.gob"
 
 func (r *repo) writeBinFile(path string, bmp any) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	f, err := r.root.OpenFile(path, defaultNewFileFlags, defaultFilePerm)
 	if err != nil {
 		r.logger.Warnf("%s not found", path)
 		return errors.NewNotFound(asPathErr(err, r.path), "not found")
@@ -168,7 +169,8 @@ func saveIndex(r *repo) error {
 	}
 
 	idxPath := r.indexStoragePath()
-	_ = mkDirIfNotExists(idxPath)
+	r.root.Mkdir(idxPath, defaultDirPerm)
+	_ = r.mkDirIfNotExists(idxPath)
 	r.index.w.Lock()
 	defer r.index.w.Unlock()
 
@@ -186,7 +188,7 @@ func saveIndex(r *repo) error {
 }
 
 func (r *repo) loadBinFromFile(path string, bmp any) (err error) {
-	f, err := os.OpenFile(path, os.O_RDONLY, 0600)
+	f, err := r.root.OpenFile(path, os.O_RDONLY, defaultFilePerm)
 	if err != nil {
 		return err
 	}
@@ -245,12 +247,20 @@ func (r *repo) removeFromIndex(it vocab.Item, path string) error {
 	errs := make([]error, 0)
 	switch {
 	case vocab.ActivityTypes.Contains(it.GetType()):
-		_ = in.all[index.ByActor].Add(it)
-		_ = in.all[index.ByObject].Add(it)
+		if iact, ok := in.all[index.ByActor]; ok {
+			_ = iact.Add(it)
+		}
+		if iob, ok := in.all[index.ByObject]; ok {
+			_ = iob.Add(it)
+		}
 	case vocab.IntransitiveActivityTypes.Contains(it.GetType()):
-		_ = in.all[index.ByActor].Add(it)
+		if iact, ok := in.all[index.ByActor]; ok {
+			_ = iact.Add(it)
+		}
 	case vocab.ActorTypes.Contains(it.GetType()):
-		_ = in.all[index.ByPreferredUsername].Add(it)
+		if ipu, ok := in.all[index.ByPreferredUsername]; ok {
+			_ = ipu.Add(it)
+		}
 	}
 
 	type remover interface {
@@ -258,11 +268,17 @@ func (r *repo) removeFromIndex(it vocab.Item, path string) error {
 	}
 	// NOTE(marius): all objects should get added to these indexes
 	for _, gi := range allIndexTypes {
-		if rem, ok := in.all[gi].(remover); ok {
-			if err := rem.Remove(it); err != nil {
-				errs = append(errs, err)
-				continue
-			}
+		i, ok := in.all[gi]
+		if !ok {
+			continue
+		}
+		rem, ok := i.(remover)
+		if !ok {
+			continue
+		}
+		if err := rem.Remove(it); err != nil {
+			errs = append(errs, err)
+			continue
 		}
 	}
 
@@ -280,18 +296,28 @@ func (r *repo) addToIndex(it vocab.Item, path string) error {
 
 	switch {
 	case vocab.ActivityTypes.Contains(it.GetType()):
-		_ = in.all[index.ByActor].Add(it)
-		_ = in.all[index.ByObject].Add(it)
+		if iact, ok := in.all[index.ByActor]; ok {
+			_ = iact.Add(it)
+		}
+		if iob, ok := in.all[index.ByObject]; ok {
+			_ = iob.Add(it)
+		}
 	case vocab.IntransitiveActivityTypes.Contains(it.GetType()):
-		_ = in.all[index.ByActor].Add(it)
+		if iact, ok := in.all[index.ByActor]; ok {
+			_ = iact.Add(it)
+		}
 	case vocab.ActorTypes.Contains(it.GetType()):
-		_ = in.all[index.ByPreferredUsername].Add(it)
+		if ipu, ok := in.all[index.ByPreferredUsername]; ok {
+			_ = ipu.Add(it)
+		}
 	}
 
 	var itemRef uint64
 	// NOTE(marius): all objects should get added to these indexes
 	for _, gi := range genericIndexTypes {
-		itemRef = in.all[gi].Add(it)
+		if ig, ok := in.all[gi]; ok {
+			itemRef = ig.Add(it)
+		}
 	}
 	in.ref[itemRef] = path
 
@@ -299,7 +325,7 @@ func (r *repo) addToIndex(it vocab.Item, path string) error {
 }
 
 func (r *repo) iriFromPath(p string) vocab.IRI {
-	p = strings.Trim(strings.TrimSuffix(strings.Replace(p, r.path, "", 1), objectKey), "/")
+	p = strings.Trim(strings.TrimSuffix(strings.Replace(p, r.root.Name(), "", 1), objectKey), "/")
 	return vocab.IRI(fmt.Sprintf("https://%s", p))
 }
 
@@ -358,7 +384,7 @@ func (r *repo) Reindex() (err error) {
 		err = saveIndex(r)
 	}()
 
-	root := os.DirFS(r.path)
+	root := r.root.FS()
 	err = fs.WalkDir(root, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -375,12 +401,12 @@ func (r *repo) Reindex() (err error) {
 		maybeCol := filepath.Base(dir)
 		iri := r.iriFromPath(dir)
 		if storageCollectionPaths.Contains(vocab.CollectionPath(maybeCol)) {
-			it, err = r.loadCollectionFromPath(filepath.Join(r.path, path), iri)
+			it, err = r.loadCollectionFromPath(filepath.Join(path), iri)
 			if err == nil {
 				err = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring64.Bitmap).Add))
 			}
 		} else {
-			it, err = r.loadItemFromPath(filepath.Join(r.path, path))
+			it, err = r.loadItemFromPath(filepath.Join(path))
 		}
 		if err != nil || vocab.IsNil(it) {
 			return nil

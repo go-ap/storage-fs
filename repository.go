@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	xerrors "errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math/rand"
 	"net/url"
@@ -19,7 +20,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"git.sr.ht/~mariusor/lw"
@@ -57,13 +57,13 @@ func New(c Config) (*repo, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := mkDirIfNotExists(p); err != nil {
+
+	if err := os.MkdirAll(p, defaultDirPerm); err != nil {
 		return nil, err
 	}
-	cwd, _ := getwd()
+
 	b := repo{
 		path:   p,
-		cwd:    cwd,
 		logger: emptyLogger,
 		cache:  cache.New(c.CacheEnable),
 	}
@@ -78,8 +78,7 @@ func New(c Config) (*repo, error) {
 
 type repo struct {
 	path   string
-	cwd    string
-	opened atomic.Bool
+	root   *os.Root
 	index  *bitmaps
 	cache  cache.CanStore
 	logger lw.Logger
@@ -87,28 +86,24 @@ type repo struct {
 
 // Open
 func (r *repo) Open() error {
-	if r.opened.Load() {
-		return nil
-	}
-	// NOTE(marius): this is needed in order that the relative symlinks used for collection items to work
-	if err := os.Chdir(r.path); err != nil {
+	root, err := os.OpenRoot(r.path)
+	if err != nil {
 		return err
 	}
-	r.opened.Store(true)
+	r.root = root
 	return nil
 }
 
 func (r *repo) close() error {
-	if !r.opened.Load() {
-		return nil
+	if r.root != nil {
+		return r.root.Close()
 	}
-	r.opened.Store(false)
-	return os.Chdir(r.cwd)
+	return nil
 }
 
 // Close
 func (r *repo) Close() {
-	r.close()
+	_ = r.close()
 }
 
 // Load
@@ -185,8 +180,8 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 		}
 	}
 
-	linkPath := r.itemStoragePath(link)
-	name := path.Base(r.itemStoragePath(it.GetLink()))
+	linkPath := iriPath(link)
+	name := path.Base(iriPath(it.GetLink()))
 	// we create a symlink to the persisted object in the current collection
 	err = onCollection(r, col, it, func(p string) error {
 		inCollection := false
@@ -254,6 +249,7 @@ func iriPath(iri vocab.IRI) string {
 	}
 
 	pieces := make([]string, 0)
+	pieces = append(pieces, "./")
 	if h := u.Host; h != "" {
 		pieces = append(pieces, h)
 	}
@@ -309,7 +305,7 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 	var link vocab.IRI
 	var col vocab.Item
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
-	itPath := r.itemStoragePath(colIRI)
+	itPath := iriPath(colIRI)
 	col, err = r.loadItemFromPath(getObjectKey(itPath))
 	if err != nil && !isHiddenCollectionKey(itPath) {
 		return err
@@ -342,14 +338,14 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		return errors.Newf("Invalid collection %s", destination)
 	}
 
-	linkPath := r.itemStoragePath(link)
-	itOriginalPath := r.itemStoragePath(it.GetLink())
-
-	fullLink := path.Join(linkPath, url.PathEscape(iriPath(it.GetLink())))
+	linkPath := iriPath(link)
+	// TODO(marius): this still uses the old paths without the non-traversal resistant API
+	itOriginalPath := filepath.Join(r.path, iriPath(it.GetLink()))
+	fullLink := path.Join(r.path, linkPath, url.PathEscape(iriPath(it.GetLink())))
 
 	// we create a symlink to the persisted object in the current collection
 	err = onCollection(r, col, it, func(p string) error {
-		if err := mkDirIfNotExists(p); err != nil {
+		if err := r.mkDirIfNotExists(p); err != nil {
 			return errors.Annotatef(err, "Unable to create collection folder %s", p)
 		}
 		// NOTE(marius): if 'it' IRI belongs to the 'col' collection we can skip symlinking it
@@ -357,7 +353,7 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 			return nil
 		}
 
-		if fi, _ := os.Stat(fullLink); fi != nil {
+		if fi, _ := r.root.Stat(fullLink); fi != nil {
 			if isSymLink(fi) {
 				return nil
 			}
@@ -381,9 +377,8 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		}
 		// NOTE(marius): we can't use hard links as we're linking to folders :(
 		// This would have been tremendously easier (as in, not having to compute paths) with hard-links.
+		// TODO(go1.25): use os.Root.Symlink
 		if err = os.Symlink(itOriginalPath, fullLink); err != nil {
-			//_ = os.Remove(fullLink)
-			//err = os.Symlink(itOriginalPath, fullLink)
 			if !os.IsExist(err) {
 				r.logger.Debugf("unable to symlink to collection %s: %s", fullLink, err.Error())
 			}
@@ -477,8 +472,8 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*Metadata, error) {
 		return nil, err
 	}
 
-	p := r.itemStoragePath(iri)
-	raw, err := loadRawFromPath(getMetadataKey(p))
+	p := iriPath(iri)
+	raw, err := r.loadRaw(getMetadataKey(p))
 	if err != nil {
 		err = errors.NewNotFound(asPathErr(err, r.path), "Could not find metadata in path %s", sanitizePath(p, r.path))
 		return nil, err
@@ -498,8 +493,9 @@ func (r *repo) SaveMetadata(m Metadata, iri vocab.IRI) error {
 		return err
 	}
 
-	p := getMetadataKey(r.itemStoragePath(iri))
-	f, err := createOrOpenFile(p)
+	p := getMetadataKey(iriPath(iri))
+	_ = r.mkDirIfNotExists(filepath.Dir(p))
+	f, err := r.root.OpenFile(p, defaultNewFileFlags, defaultFilePerm)
 	if err != nil {
 		return err
 	}
@@ -667,14 +663,6 @@ func generateECKeyPair() (pem.Block, pem.Block) {
 	return p, r
 }
 
-func createOrOpenFile(p string) (*os.File, error) {
-	err := mkDirIfNotExists(path.Dir(p))
-	if err != nil {
-		return nil, err
-	}
-	return os.OpenFile(p, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
-}
-
 var storageCollectionPaths = append(filters.FedBOXCollections, append(vocab.OfActor, vocab.OfObject...)...)
 
 func isStorageCollectionKey(p string) bool {
@@ -685,10 +673,6 @@ func isStorageCollectionKey(p string) bool {
 func isHiddenCollectionKey(p string) bool {
 	lst := vocab.CollectionPath(filepath.Base(p))
 	return filters.HiddenCollections.Contains(lst)
-}
-
-func (r *repo) itemStoragePath(iri vocab.IRI) string {
-	return filepath.Join(r.path, iriPath(iri))
 }
 
 // createCollections
@@ -735,7 +719,7 @@ func createCollectionInPath(r *repo, it, owner vocab.Item) (vocab.Item, error) {
 	if vocab.IsNil(it) {
 		return nil, nil
 	}
-	itPath := r.itemStoragePath(it.GetLink())
+	itPath := iriPath(it.GetLink())
 
 	colObject, err := r.loadItemFromPath(getObjectKey(itPath))
 	if colObject == nil {
@@ -745,14 +729,14 @@ func createCollectionInPath(r *repo, it, owner vocab.Item) (vocab.Item, error) {
 		return nil, errors.Annotatef(err, "saving collection object is not done")
 	}
 
-	return it.GetLink(), asPathErr(mkDirIfNotExists(itPath), r.path)
+	return it.GetLink(), asPathErr(r.mkDirIfNotExists(itPath), r.path)
 }
 
 func deleteCollectionFromPath(r repo, it vocab.Item) error {
 	if vocab.IsNil(it) {
 		return nil
 	}
-	itPath := r.itemStoragePath(it.GetLink())
+	itPath := iriPath(it.GetLink())
 	if fi, err := os.Stat(itPath); err != nil {
 		if !os.IsNotExist(err) {
 			return errors.NewNotFound(asPathErr(err, r.path), "not found")
@@ -817,8 +801,8 @@ func getAbsStoragePath(p string) (string, error) {
 }
 
 func deleteItem(r *repo, it vocab.Item) error {
-	itemPath := r.itemStoragePath(it.GetLink())
-	if err := os.RemoveAll(itemPath); err != nil {
+	itemPath := iriPath(it.GetLink())
+	if err := r.root.Remove(itemPath); err != nil {
 		return err
 	}
 	r.removeFromCache(it.GetLink())
@@ -836,20 +820,20 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	}()
 
 	writeSingleObjFn := func(it vocab.Item) (vocab.Item, error) {
-		itPath := r.itemStoragePath(it.GetLink())
-		_ = mkDirIfNotExists(itPath)
+		itPath := iriPath(it.GetLink())
+		_ = r.mkDirIfNotExists(itPath)
 
 		entryBytes, err := encodeItemFn(it)
 		if err != nil {
 			return it, errors.Annotatef(err, "could not marshal object")
 		}
 
-		if err := mkDirIfNotExists(itPath); err != nil {
+		if err := r.mkDirIfNotExists(itPath); err != nil {
 			r.logger.Errorf("unable to create path: %s, %s", itPath, err)
 			return it, errors.Annotatef(err, "could not create file")
 		}
 		objPath := getObjectKey(itPath)
-		f, err := os.OpenFile(objPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		f, err := r.root.OpenFile(objPath, defaultNewFileFlags, defaultFilePerm)
 		if err != nil {
 			r.logger.Errorf("%s not found", objPath)
 			return it, errors.NewNotFound(asPathErr(err, r.path), "not found")
@@ -906,7 +890,7 @@ func onCollection(r *repo, col vocab.Item, it vocab.Item, fn func(p string) erro
 		return errors.Newf("Invalid collection, it does not have a valid IRI")
 	}
 
-	itPath := r.itemStoragePath(col.GetLink())
+	itPath := iriPath(col.GetLink())
 	if err := fn(itPath); err != nil {
 		if os.IsExist(err) {
 			return errors.NewConflict(err, "%s already exists in collection %s", it.GetID(), itPath)
@@ -917,8 +901,13 @@ func onCollection(r *repo, col vocab.Item, it vocab.Item, fn func(p string) erro
 	return nil
 }
 
-func loadRawFromPath(itPath string) ([]byte, error) {
-	return os.ReadFile(itPath)
+func (r *repo) loadRaw(itPath string) ([]byte, error) {
+	fi, err := r.root.Open(itPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return io.ReadAll(fi)
 }
 
 func loadFromRaw(raw []byte) (vocab.Item, error) {
@@ -930,7 +919,7 @@ func loadFromRaw(raw []byte) (vocab.Item, error) {
 }
 
 func (r *repo) loadOneFromIRI(i vocab.IRI) (vocab.Item, error) {
-	col, err := r.loadItemFromPath(getObjectKey(r.itemStoragePath(i)))
+	col, err := r.loadItemFromPath(getObjectKey(iriPath(i)))
 	if err != nil {
 		return nil, err
 	}
@@ -971,7 +960,7 @@ func loadFilteredPropsForObject(r *repo, fil ...filters.Check) func(o *vocab.Obj
 				if vocab.IsNil(t) || !vocab.IsIRI(t) {
 					return nil
 				}
-				ob, err := r.loadItemFromPath(getObjectKey(r.itemStoragePath(t.GetLink())))
+				ob, err := r.loadItemFromPath(getObjectKey(iriPath(t.GetLink())))
 				if err != nil {
 					continue
 				}
@@ -993,7 +982,7 @@ func dereferenceItemAndFilter(r *repo, ob vocab.Item, fil ...filters.Check) (voc
 	if !vocab.IsIRI(ob) {
 		return ob, nil
 	}
-	itPath := r.itemStoragePath(ob.GetLink())
+	itPath := iriPath(ob.GetLink())
 	o, err := r.loadItemFromPath(getObjectKey(itPath), fil...)
 	if err != nil {
 		return ob, nil
@@ -1110,8 +1099,8 @@ func (r *repo) loadFromCache(iri vocab.IRI) vocab.Item {
 	return r.cache.Load(iri.GetLink())
 }
 
-func loadItemFromPath(p string) (vocab.Item, error) {
-	raw, err := loadRawFromPath(p)
+func (r *repo) loadRawFromPath(p string) (vocab.Item, error) {
+	raw, err := r.loadRaw(p)
 	if err != nil {
 		if os.IsNotExist(err) && !isStorageCollectionKey(filepath.Dir(p)) {
 			return getOriginalIRI(p)
@@ -1142,7 +1131,7 @@ func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, err
 
 	var err error
 	if vocab.IsNil(it) || vocab.IsIRI(it) {
-		if it, err = loadItemFromPath(p); err != nil {
+		if it, err = r.loadRawFromPath(p); err != nil {
 			return nil, asPathErr(err, r.path)
 		}
 	}
@@ -1208,7 +1197,7 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 			items = make(vocab.ItemCollection, 0)
 		}
 
-		err = filepath.WalkDir(colDirPath, func(p string, info os.DirEntry, err error) error {
+		err = fs.WalkDir(r.root.FS(), colDirPath, func(p string, info os.DirEntry, err error) error {
 			if err != nil && os.IsNotExist(err) {
 				if isStorageCollectionKey(p) {
 					return errors.NewNotFound(asPathErr(err, r.path), "not found")
@@ -1226,7 +1215,7 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 				return nil
 			}
 
-			ob, err := loadItemFromPath(getObjectKey(p))
+			ob, err := r.loadItemFromPath(getObjectKey(p))
 			if err != nil {
 				r.logger.Warnf("unable to load %s: %+s", p, err)
 				return nil
@@ -1354,8 +1343,7 @@ func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, err
 	var err error
 	var it vocab.Item
 
-	itPath := r.itemStoragePath(iri)
-
+	itPath := iriPath(iri)
 	if isStorageCollectionKey(itPath) {
 		return r.loadCollectionFromPath(getObjectKey(itPath), iri, fil...)
 	} else {
