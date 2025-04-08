@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	defaultDirPerm      = os.ModePerm | 0700
-	defaultFilePerm     = os.ModePerm | 0600
+	defaultDirPerm      = 0o700
+	defaultFilePerm     = 0o600
 	defaultNewFileFlags = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 
 	clientsBucket   = "clients"
