@@ -345,7 +345,7 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 
 	// we create a symlink to the persisted object in the current collection
 	err = onCollection(r, col, it, func(p string) error {
-		if err := r.mkDirIfNotExists(p); err != nil {
+		if err := mkDirIfNotExists(r.root, p); err != nil {
 			return errors.Annotatef(err, "Unable to create collection folder %s", p)
 		}
 		// NOTE(marius): if 'it' IRI belongs to the 'col' collection we can skip symlinking it
@@ -473,7 +473,7 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*Metadata, error) {
 	}
 
 	p := iriPath(iri)
-	raw, err := r.loadRaw(getMetadataKey(p))
+	raw, err := loadRaw(r.root, getMetadataKey(p))
 	if err != nil {
 		err = errors.NewNotFound(asPathErr(err, r.path), "Could not find metadata in path %s", sanitizePath(p, r.path))
 		return nil, err
@@ -488,29 +488,19 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*Metadata, error) {
 // SaveMetadata
 func (r *repo) SaveMetadata(m Metadata, iri vocab.IRI) error {
 	err := r.Open()
+	if err != nil {
+		return err
+	}
 	defer r.Close()
-	if err != nil {
-		return err
-	}
-
-	p := getMetadataKey(iriPath(iri))
-	_ = r.mkDirIfNotExists(filepath.Dir(p))
-	f, err := r.root.OpenFile(p, defaultNewFileFlags, defaultFilePerm)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
 
 	entryBytes, err := encodeFn(m)
 	if err != nil {
 		return errors.Annotatef(err, "Could not marshal metadata")
 	}
-	wrote, err := f.Write(entryBytes)
-	if err != nil {
-		return errors.Annotatef(err, "could not store encoded object")
-	}
-	if wrote != len(entryBytes) {
-		return errors.Annotatef(err, "failed writing full object")
+
+	basePath := iriPath(iri)
+	if err := putRaw(r.root, getMetadataKey(basePath), entryBytes); err != nil {
+		return err
 	}
 	return nil
 }
@@ -729,7 +719,7 @@ func createCollectionInPath(r *repo, it, owner vocab.Item) (vocab.Item, error) {
 		return nil, errors.Annotatef(err, "saving collection object is not done")
 	}
 
-	return it.GetLink(), asPathErr(r.mkDirIfNotExists(itPath), r.path)
+	return it.GetLink(), asPathErr(mkDirIfNotExists(r.root, itPath), r.path)
 }
 
 func deleteCollectionFromPath(r repo, it vocab.Item) error {
@@ -821,35 +811,17 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 
 	writeSingleObjFn := func(it vocab.Item) (vocab.Item, error) {
 		itPath := iriPath(it.GetLink())
-		_ = r.mkDirIfNotExists(itPath)
+		_ = mkDirIfNotExists(r.root, itPath)
 
 		entryBytes, err := encodeItemFn(it)
 		if err != nil {
 			return it, errors.Annotatef(err, "could not marshal object")
 		}
 
-		if err := r.mkDirIfNotExists(itPath); err != nil {
-			r.logger.Errorf("unable to create path: %s, %s", itPath, err)
-			return it, errors.Annotatef(err, "could not create file")
+		if err = putRaw(r.root, getObjectKey(itPath), entryBytes); err != nil {
+			return it, err
 		}
-		objPath := getObjectKey(itPath)
-		f, err := r.root.OpenFile(objPath, defaultNewFileFlags, defaultFilePerm)
-		if err != nil {
-			r.logger.Errorf("%s not found", objPath)
-			return it, errors.NewNotFound(asPathErr(err, r.path), "not found")
-		}
-		defer func() {
-			if err := f.Close(); err != nil {
-				r.logger.Errorf("Unable to close file: %s", err)
-			}
-		}()
-		wrote, err := f.Write(entryBytes)
-		if err != nil {
-			return it, errors.Annotatef(err, "could not store encoded object")
-		}
-		if wrote != len(entryBytes) {
-			return it, errors.Annotatef(err, "failed writing object")
-		}
+
 		if err = r.addToIndex(it, itPath); err != nil && !errors.IsNotImplemented(err) {
 			r.logger.Errorf("unable to add item %s to index: %s", it.GetLink(), err)
 		}
@@ -901,11 +873,14 @@ func onCollection(r *repo, col vocab.Item, it vocab.Item, fn func(p string) erro
 	return nil
 }
 
-func (r *repo) loadRaw(itPath string) ([]byte, error) {
-	fi, err := r.root.Open(itPath)
+func loadRaw(root *os.Root, itPath string) ([]byte, error) {
+	fi, err := root.Open(itPath)
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		_ = fi.Close()
+	}()
 
 	return io.ReadAll(fi)
 }
@@ -1099,8 +1074,8 @@ func (r *repo) loadFromCache(iri vocab.IRI) vocab.Item {
 	return r.cache.Load(iri.GetLink())
 }
 
-func (r *repo) loadRawFromPath(p string) (vocab.Item, error) {
-	raw, err := r.loadRaw(p)
+func loadRawFromPath(root *os.Root, p string) (vocab.Item, error) {
+	raw, err := loadRaw(root, p)
 	if err != nil {
 		if os.IsNotExist(err) && !isStorageCollectionKey(filepath.Dir(p)) {
 			return getOriginalIRI(p)
@@ -1131,11 +1106,11 @@ func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, err
 
 	var err error
 	if vocab.IsNil(it) || vocab.IsIRI(it) {
-		if it, err = r.loadRawFromPath(p); err != nil {
+		if it, err = loadRawFromPath(r.root, p); err != nil {
 			return nil, asPathErr(err, r.path)
 		}
 	}
-	if vocab.IsNil(it) {
+	if it == nil || vocab.IsNil(it) {
 		return nil, errors.NotFoundf("not found")
 	}
 	if it.IsCollection() {

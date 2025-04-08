@@ -27,12 +27,14 @@ func saveFsItem(it any, basePath string) error {
 		return err
 	}
 
-	clientFile := getOauthObjectKey(basePath)
+	clientFile := filepath.Join(basePath, oauthObjectKey)
 	f, err := os.Create(clientFile)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	var raw []byte
 	raw, err = encodeFn(it)
@@ -215,17 +217,19 @@ func Test_CreateClient(t *testing.T) {
 			f, err := os.Open(filePath)
 			if err != nil {
 				t.Errorf("Unable to read %s client file: %s", filePath, err)
+				return
 			}
 			defer f.Close()
 
 			fi, err := f.Stat()
 			if err != nil {
 				t.Errorf("error: %+s", err)
+				return
 			}
 			raw := make([]byte, fi.Size())
 			_, err = f.Read(raw)
 			if err != nil {
-				t.Errorf("Unable to read %s client raw data: %s", filePath, err)
+				return
 			}
 			l := new(osin.DefaultClient)
 			err = decodeFn(raw, l)
@@ -257,10 +261,15 @@ func Test_UpdateClient(t *testing.T) {
 			f, err := os.Open(filePath)
 			if err != nil {
 				t.Errorf("Unable to read %s client file: %s", filePath, err)
+				return
 			}
 			defer f.Close()
 
-			fi, _ := f.Stat()
+			fi, err := f.Stat()
+			if err != nil {
+				t.Errorf("Error: %+s", err)
+				return
+			}
 			raw := make([]byte, fi.Size())
 			_, err = f.Read(raw)
 			if err != nil {

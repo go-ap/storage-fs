@@ -100,7 +100,7 @@ func (r *repo) searchIndex(col vocab.Item, ff ...filters.Check) (vocab.ItemColle
 			if !strings.Contains(ip, prefix) {
 				ip = filepath.Join(prefix, ip)
 			}
-			ob, err := r.loadRawFromPath(getObjectKey(ip))
+			ob, err := loadRawFromPath(r.root, getObjectKey(ip))
 			if err != nil {
 				continue
 			}
@@ -170,7 +170,7 @@ func saveIndex(r *repo) error {
 
 	idxPath := r.indexStoragePath()
 	r.root.Mkdir(idxPath, defaultDirPerm)
-	_ = r.mkDirIfNotExists(idxPath)
+	_ = mkDirIfNotExists(r.root, idxPath)
 	r.index.w.Lock()
 	defer r.index.w.Unlock()
 
