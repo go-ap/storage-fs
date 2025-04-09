@@ -171,8 +171,8 @@ func saveIndex(r *repo) error {
 	idxPath := r.indexStoragePath()
 	r.root.Mkdir(idxPath, defaultDirPerm)
 	_ = mkDirIfNotExists(r.root, idxPath)
-	r.index.w.Lock()
-	defer r.index.w.Unlock()
+	r.index.w.RLock()
+	defer r.index.w.RUnlock()
 
 	errs := make([]error, 0, len(r.index.all))
 	for typ, bmp := range r.index.all {
@@ -293,6 +293,9 @@ func (r *repo) addToIndex(it vocab.Item, path string) error {
 		return errors.NotFoundf("nil item")
 	}
 	in := r.index
+
+	in.w.Lock()
+	defer in.w.Unlock()
 
 	switch {
 	case vocab.ActivityTypes.Contains(it.GetType()):
