@@ -167,9 +167,11 @@ func Test_GetClient(t *testing.T) {
 				client, err := s.GetClient(cl.Id)
 				if tt.err != nil && !errors.Is(err, tt.err) {
 					t.Errorf("Error when loading clients, expected %s, received %s", tt.err, err)
+					return
 				}
 				if tt.err == nil && err != nil {
 					t.Errorf("Unexpected error when loading clients, received %s", err)
+					return
 				}
 				expected := tt.want[i]
 				if !reflect.DeepEqual(client, expected) {

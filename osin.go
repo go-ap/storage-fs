@@ -211,7 +211,7 @@ func (r *repo) GetClient(id string) (osin.Client, error) {
 		return nil, err
 	}
 	defer r.Close()
-	return r.loadClientFromPath(r.oauthClientPath(clientsBucket, id, oauthObjectKey))
+	return r.loadClientFromPath(r.oauthClientPath(clientsBucket, id))
 }
 
 func putItem(root *os.Root, basePath string, it any) error {
