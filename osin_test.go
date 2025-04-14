@@ -120,6 +120,9 @@ func Test_ListClients(t *testing.T) {
 			continue
 		}
 		t.Run(name, func(t *testing.T) {
+			_ = s.Open()
+			defer s.Close()
+
 			clients, err := s.ListClients()
 			if tt.err != nil && !errors.Is(err, tt.err) {
 				t.Errorf("Error when loading clients, expected %s, received %s", tt.err, err)
@@ -164,6 +167,9 @@ func Test_GetClient(t *testing.T) {
 		for i, cl := range tt.clients {
 			name = fmt.Sprintf("%s:%d", name, i)
 			t.Run(name, func(t *testing.T) {
+				_ = s.Open()
+				defer s.Close()
+
 				client, err := s.GetClient(cl.Id)
 				if tt.err != nil && !errors.Is(err, tt.err) {
 					t.Errorf("Error when loading clients, expected %s, received %s", tt.err, err)
@@ -208,6 +214,9 @@ func Test_CreateClient(t *testing.T) {
 
 	for name, tt := range createClientTests {
 		t.Run(name, func(t *testing.T) {
+			_ = s.Open()
+			defer s.Close()
+
 			err := s.CreateClient(tt.client)
 			if tt.err != nil && err == nil {
 				t.Errorf("Unexpected error when calling CreateClient, received %s", err)
@@ -252,6 +261,9 @@ func Test_UpdateClient(t *testing.T) {
 
 	for name, tt := range createClientTests {
 		t.Run(name, func(t *testing.T) {
+			_ = s.Open()
+			defer s.Close()
+
 			err := s.CreateClient(tt.client)
 			if tt.err != nil && err == nil {
 				t.Errorf("Unexpected error when calling CreateClient, received %s", err)

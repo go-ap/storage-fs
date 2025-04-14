@@ -108,11 +108,6 @@ func (r *repo) Close() {
 
 // Load
 func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
-	if err := r.Open(); err != nil {
-		return nil, err
-	}
-	defer r.Close()
-
 	it, err := r.loadFromIRI(i, f...)
 	if err != nil {
 		return nil, err
@@ -122,12 +117,6 @@ func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 
 // Create
 func (r *repo) Create(col vocab.CollectionInterface) (vocab.CollectionInterface, error) {
-	err := r.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
-
 	if vocab.IsNil(col) {
 		return col, errors.Newf("Unable to operate on nil element")
 	}
@@ -139,11 +128,7 @@ func (r *repo) Create(col vocab.CollectionInterface) (vocab.CollectionInterface,
 
 // Save
 func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
-	err := r.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
+	var err error
 
 	if it, err = save(r, it); err == nil {
 		op := "Updated"
@@ -158,12 +143,6 @@ func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
 
 // RemoveFrom
 func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
-	err := r.Open()
-	defer r.Close()
-	if err != nil {
-		return err
-	}
-
 	ob, t := vocab.Split(col)
 	var link vocab.IRI
 	if filters.ValidCollection(t) {
@@ -183,7 +162,7 @@ func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
 	linkPath := iriPath(link)
 	name := path.Base(iriPath(it.GetLink()))
 	// we create a symlink to the persisted object in the current collection
-	err = onCollection(r, col, it, func(p string) error {
+	err := onCollection(r, col, it, func(p string) error {
 		inCollection := false
 		if dirInfo, err := os.ReadDir(p); err == nil {
 			for _, di := range dirInfo {
@@ -296,17 +275,11 @@ var collectionTypes = vocab.ActivityVocabularyTypes{vocab.CollectionPageType, vo
 
 // AddTo
 func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
-	err := r.Open()
-	defer r.Close()
-	if err != nil {
-		return err
-	}
-
 	var link vocab.IRI
-	var col vocab.Item
+
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
 	itPath := iriPath(colIRI)
-	col, err = r.loadItemFromPath(getObjectKey(itPath))
+	col, err := r.loadItemFromPath(getObjectKey(itPath))
 	if err != nil && !isHiddenCollectionKey(itPath) {
 		return err
 	}
@@ -416,11 +389,6 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 
 // Delete
 func (r *repo) Delete(it vocab.Item) error {
-	err := r.Open()
-	defer r.Close()
-	if err != nil {
-		return err
-	}
 	return r.delete(it)
 }
 
@@ -466,12 +434,6 @@ func (r *repo) PasswordCheck(it vocab.Item, pw []byte) error {
 
 // LoadMetadata
 func (r *repo) LoadMetadata(iri vocab.IRI) (*Metadata, error) {
-	err := r.Open()
-	defer r.Close()
-	if err != nil {
-		return nil, err
-	}
-
 	p := iriPath(iri)
 	raw, err := loadRaw(r.root, getMetadataKey(p))
 	if err != nil {
@@ -487,12 +449,6 @@ func (r *repo) LoadMetadata(iri vocab.IRI) (*Metadata, error) {
 
 // SaveMetadata
 func (r *repo) SaveMetadata(m Metadata, iri vocab.IRI) error {
-	err := r.Open()
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
 	entryBytes, err := encodeFn(m)
 	if err != nil {
 		return errors.Annotatef(err, "Could not marshal metadata")
@@ -1030,11 +986,11 @@ func asPathErr(err error, prefix string) error {
 	return err
 }
 
-func getOriginalIRI(p string) (vocab.Item, error) {
+func getOriginalIRI(root *os.Root, p string) (vocab.Item, error) {
 	// NOTE(marius): if the __raw file wasn't found, but the path corresponds to a valid symlink,
 	// we can interpret that as an IRI (usually referencing an external object) and return that.
 	dir := path.Dir(p)
-	fi, err := os.Stat(dir)
+	fi, err := root.Lstat(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -1078,7 +1034,7 @@ func loadRawFromPath(root *os.Root, p string) (vocab.Item, error) {
 	raw, err := loadRaw(root, p)
 	if err != nil {
 		if os.IsNotExist(err) && !isStorageCollectionKey(filepath.Dir(p)) {
-			return getOriginalIRI(p)
+			return getOriginalIRI(root, p)
 		}
 		return nil, err
 	}
@@ -1097,6 +1053,9 @@ func loadRawFromPath(root *os.Root, p string) (vocab.Item, error) {
 
 // loadItemFromPath
 func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, error) {
+	if r.root == nil {
+		return nil, errors.Errorf("must open storage")
+	}
 	cachedIt := r.loadFromCache(r.iriFromPath(p))
 
 	var it vocab.Item

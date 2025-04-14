@@ -114,6 +114,7 @@ func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) (ui
 	if err != nil {
 		return 0, err
 	}
+	defer root.Close()
 
 	var cnt uint = 0
 	if isOauthStorageCollectionKey(itPath) {
@@ -152,14 +153,9 @@ func (r *repo) Clone() osin.Storage {
 
 // ListClients
 func (r *repo) ListClients() ([]osin.Client, error) {
-	err := r.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
 	clients := make([]osin.Client, 0)
 
-	_, err = r.loadFromOauthPath(r.oauthClientPath(clientsBucket), func(raw []byte) error {
+	_, err := r.loadFromOauthPath(r.oauthClientPath(clientsBucket), func(raw []byte) error {
 		cl := cl{}
 		if err := decodeFn(raw, &cl); err != nil {
 			return err
@@ -206,11 +202,6 @@ func (r *repo) GetClient(id string) (osin.Client, error) {
 	if id == "" {
 		return nil, errors.NotFoundf("Empty client id")
 	}
-	err := r.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
 	return r.loadClientFromPath(r.oauthClientPath(clientsBucket, id))
 }
 
@@ -251,12 +242,6 @@ func (r *repo) UpdateClient(c osin.Client) error {
 	if interfaceIsNil(c) {
 		return nil
 	}
-	err := r.Open()
-	if err != nil {
-		return errors.Annotatef(err, "Unable to open fs *repositoryage")
-	}
-	defer r.Close()
-
 	cl := cl{
 		Id:          c.GetId(),
 		Secret:      c.GetSecret(),
@@ -280,22 +265,11 @@ func (r *repo) CreateClient(c osin.Client) error {
 
 // RemoveClient
 func (r *repo) RemoveClient(id string) error {
-	err := r.Open()
-	if err != nil {
-		return errors.Annotatef(err, "Unable to open fs *repositoryage")
-	}
-	defer r.Close()
 	return os.RemoveAll(r.oauthClientPath(clientsBucket, id))
 }
 
 // SaveAuthorize saves authorize data.
 func (r *repo) SaveAuthorize(data *osin.AuthorizeData) error {
-	err := r.Open()
-	if err != nil {
-		return errors.Annotatef(err, "Unable to open fs storage")
-	}
-	defer r.Close()
-
 	root, err := r.openOauthRoot()
 	if err != nil {
 		return errors.Annotatef(err, "Invalid path %s", folder)
@@ -359,32 +333,16 @@ func (r *repo) LoadAuthorize(code string) (*osin.AuthorizeData, error) {
 	if code == "" {
 		return nil, errors.NotFoundf("Empty authorize code")
 	}
-	err := r.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
 	return r.loadAuthorizeFromPath(filepath.Join(authorizeBucket, code))
 }
 
 // RemoveAuthorize revokes or deletes the authorization code.
 func (r *repo) RemoveAuthorize(code string) error {
-	err := r.Open()
-	if err != nil {
-		return errors.Annotatef(err, "Unable to open fs *repositoryage")
-	}
-	defer r.Close()
 	return os.RemoveAll(filepath.Join(authorizeBucket, code))
 }
 
 // SaveAccess writes AccessData.
 func (r *repo) SaveAccess(data *osin.AccessData) error {
-	err := r.Open()
-	if err != nil {
-		return errors.Annotatef(err, "Unable to open fs storage")
-	}
-	defer r.Close()
-
 	root, err := r.openOauthRoot()
 	if err != nil {
 		return err
@@ -475,22 +433,12 @@ func (r *repo) LoadAccess(code string) (*osin.AccessData, error) {
 	if code == "" {
 		return nil, errors.NotFoundf("Empty access code")
 	}
-	err := r.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
 
 	return r.loadAccessFromPath(filepath.Join(accessBucket, code))
 }
 
 // RemoveAccess revokes or deletes an AccessData.
 func (r *repo) RemoveAccess(code string) error {
-	err := r.Open()
-	if err != nil {
-		return errors.Annotatef(err, "Unable to open fs *repository")
-	}
-	defer r.Close()
 	return os.RemoveAll(filepath.Join(accessBucket, code))
 }
 
@@ -515,10 +463,5 @@ func (r *repo) LoadRefresh(code string) (*osin.AccessData, error) {
 
 // RemoveRefresh revokes or deletes refresh AccessData.
 func (r *repo) RemoveRefresh(code string) error {
-	err := r.Open()
-	if err != nil {
-		return errors.Annotatef(err, "Unable to open fs *repository")
-	}
-	defer r.Close()
 	return os.RemoveAll(filepath.Join(refreshBucket, code))
 }
