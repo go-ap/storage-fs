@@ -1120,6 +1120,11 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 		ob.ID = iri
 		return nil
 	})
+	var totalItems uint = 0
+	_ = vocab.OnCollection(it, func(c *vocab.Collection) error {
+		totalItems = c.TotalItems
+		return nil
+	})
 
 	colDirPath := filepath.Dir(itPath)
 
@@ -1128,7 +1133,7 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 		// NOTE(marius): we load items the hard way if the index search resulted no hits, because we
 		// can't make use of all the filters in the index. (Yet.)
 		if items == nil {
-			items = make(vocab.ItemCollection, 0)
+			items = make(vocab.ItemCollection, 0, totalItems)
 		}
 
 		err = fs.WalkDir(r.root.FS(), colDirPath, func(p string, info os.DirEntry, err error) error {
