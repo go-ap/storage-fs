@@ -134,50 +134,47 @@ func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
 		op := "Updated"
 		id := it.GetID()
 		if !id.IsValid() {
-			op = "Added new"
+			op = "Added"
 		}
-		r.logger.Debugf("%s %s: %s", op, it.GetType(), it.GetLink())
+		r.logger.WithContext(lw.Ctx{"type": it.GetType(), "IRI": it.GetLink()}).Debugf("%s", op)
 	}
 	return it, err
 }
 
 // RemoveFrom
-func (r *repo) RemoveFrom(col vocab.IRI, it vocab.Item) error {
-	ob, t := vocab.Split(col)
+func (r *repo) RemoveFrom(colIRI vocab.IRI, it vocab.Item) error {
 	var link vocab.IRI
-	if filters.ValidCollection(t) {
-		// Create the collection on the object, if it doesn't exist
-		i, err := r.loadOneFromIRI(ob)
-		if err != nil {
-			return err
-		}
-		if p, ok := t.AddTo(i); ok {
-			_, _ = save(r, i)
-			link = p
-		} else {
-			link = t.IRI(i)
-		}
+
+	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
+	itPath := iriPath(colIRI)
+	col, err := r.loadItemFromPath(getObjectKey(itPath))
+	if err != nil && !isHiddenCollectionKey(itPath) {
+		return err
 	}
 
 	linkPath := iriPath(link)
 	name := path.Base(iriPath(it.GetLink()))
-	// we create a symlink to the persisted object in the current collection
-	err := onCollection(r, col, it, func(p string) error {
+	err = onCollection(r, col, it, func(p string) error {
 		inCollection := false
-		if dirInfo, err := os.ReadDir(p); err == nil {
+		colDir, err := r.root.Open(p)
+		if err != nil {
+			return nil
+		}
+		if dirInfo, err := colDir.ReadDir(-1); err == nil {
 			for _, di := range dirInfo {
 				fi, err := di.Info()
 				if err != nil {
 					continue
 				}
-				if fi.Name() == name && isSymLink(fi) {
+				// NOTE(marius): we need to remove even if it's not a symlink
+				if fi.Name() == name /*&& isSymLink(fi)*/ {
 					inCollection = true
 				}
 			}
 		}
 		if inCollection {
-			link := path.Join(linkPath, name)
-			return os.RemoveAll(link)
+			fullLink := path.Join(r.path, linkPath, iriPath(it.GetLink()))
+			return os.RemoveAll(fullLink)
 		}
 		return nil
 	})
@@ -748,7 +745,7 @@ func getAbsStoragePath(p string) (string, error) {
 
 func deleteItem(r *repo, it vocab.Item) error {
 	itemPath := iriPath(it.GetLink())
-	if err := r.root.Remove(itemPath); err != nil {
+	if err := r.root.Remove(itemPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	r.removeFromCache(it.GetLink())
@@ -822,8 +819,9 @@ func onCollection(r *repo, col vocab.Item, it vocab.Item, fn func(p string) erro
 	if err := fn(itPath); err != nil {
 		if os.IsExist(err) {
 			return errors.NewConflict(err, "%s already exists in collection %s", it.GetID(), itPath)
+		} else if !os.IsNotExist(err) {
+			return errors.Annotatef(err, "Unable to save entries to collection %s", itPath)
 		}
-		return errors.Annotatef(err, "Unable to save entries to collection %s", itPath)
 	}
 	r.removeFromCache(col.GetLink())
 	return nil
