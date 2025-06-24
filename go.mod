@@ -5,10 +5,10 @@ go 1.24
 require (
 	git.sr.ht/~mariusor/lw v0.0.0-20250325163623-1639f3fb0e0d
 	github.com/RoaringBitmap/roaring v1.9.4
-	github.com/go-ap/activitypub v0.0.0-20250527110644-1410ed93404d
-	github.com/go-ap/cache v0.0.0-20250527110731-01dd30d088be
+	github.com/go-ap/activitypub v0.0.0-20250624113752-67e4989cab6d
+	github.com/go-ap/cache v0.0.0-20250624114002-22c47b1ed131
 	github.com/go-ap/errors v0.0.0-20250527110557-c8db454e53fd
-	github.com/go-ap/filters v0.0.0-20250527111509-8ef063ce5449
+	github.com/go-ap/filters v0.0.0-20250624114123-8b0381a095ec
 	github.com/openshift/osin v1.0.2-0.20220317075346-0f4d38c6e53f
 	golang.org/x/crypto v0.39.0
 	golang.org/x/sys v0.33.0
@@ -19,7 +19,7 @@ require (
 	git.sr.ht/~mariusor/mask v0.0.0-20250114195353-98705a6977b7 // indirect
 	github.com/bits-and-blooms/bitset v1.22.0 // indirect
 	github.com/go-ap/jsonld v0.0.0-20221030091449-f2a191312c73 // indirect
-	github.com/go-chi/chi/v5 v5.2.1 // indirect
+	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jdkato/prose v1.2.1 // indirect
 	github.com/mariusor/qstring v0.0.0-20200204164351-5a99d46de39d // indirect
