@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"git.sr.ht/~mariusor/lw"
 	vocab "github.com/go-ap/activitypub"
@@ -69,6 +70,8 @@ func Test_New(t *testing.T) {
 	}
 }
 
+var logger = lw.Dev()
+
 func Test_repo_Open(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -91,7 +94,7 @@ func Test_repo_Open(t *testing.T) {
 			r := &repo{
 				path:   tt.fields.path,
 				cache:  tt.fields.cache,
-				logger: lw.Dev(),
+				logger: logger,
 			}
 			if err := r.Open(); !errors.Is(err, tt.wantErr) {
 				t.Errorf("Open() error = %v, wantErr %v", err, tt.wantErr)
@@ -367,7 +370,7 @@ func Test_repo_createCollection(t *testing.T) {
 			r := &repo{
 				path:   t.TempDir(),
 				cache:  cache.New(false),
-				logger: lw.Dev(),
+				logger: logger,
 			}
 			_ = r.Open()
 			defer r.Close()
@@ -385,6 +388,264 @@ func Test_repo_createCollection(t *testing.T) {
 			}
 			if !vocab.ItemsEqual(saved, tt.expected) {
 				t.Errorf("Saved collection is not equal to expected %v: %v", tt.expected, saved)
+			}
+		})
+	}
+}
+
+func errPathNotFound(path string) error {
+	return &fs.PathError{Op: "openat", Path: path, Err: unix.ENOENT}
+}
+
+func defaultCol(iri vocab.IRI) vocab.CollectionInterface {
+	return &vocab.OrderedCollection{
+		ID:        iri,
+		Type:      vocab.OrderedCollectionType,
+		CC:        vocab.ItemCollection{vocab.PublicNS},
+		Published: time.Now().UTC(),
+	}
+}
+
+func Test_repo_RemoveFrom(t *testing.T) {
+	type args struct {
+		colIRI vocab.IRI
+		it     vocab.Item
+	}
+
+	tests := []struct {
+		name    string
+		path    string
+		setup   func(*repo) error
+		args    args
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			path:    t.TempDir(),
+			args:    args{},
+			wantErr: errors.NotFoundf("not found"), // empty iri can't be found, unsure if that makes sense
+		},
+		{
+			name: "collection doesn't exist",
+			path: t.TempDir(),
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: errPathNotFound("example.com/followers"),
+		},
+		{
+			name: "item doesn't exist in collection",
+			path: t.TempDir(),
+			setup: func(r *repo) error {
+				_, err := saveCollection(r, defaultCol("https://example.com/followers"))
+				return err
+			},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: nil, // if the item doesn't exist, we don't error out, unsure if that makes sense
+		},
+		{
+			name: "item exists in collection",
+			path: t.TempDir(),
+			setup: func(r *repo) error {
+				col := vocab.OrderedCollection{
+					ID:        "https://example.com/followers",
+					Type:      vocab.OrderedCollectionType,
+					CC:        vocab.ItemCollection{vocab.PublicNS},
+					Published: time.Now().UTC(),
+				}
+				if _, err := saveCollection(r, &col); err != nil {
+					return err
+				}
+				ob, err := save(r, vocab.Object{ID: "https://example.com"})
+				if err != nil {
+					return err
+				}
+				return r.AddTo(col.ID, ob)
+			},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				path:   tt.path,
+				logger: logger,
+				cache:  cache.New(true),
+			}
+			if err := r.Open(); err != nil {
+				t.Errorf("Open before RemoveFrom() error = %v", err)
+				return
+			}
+			if tt.setup != nil {
+				if err := tt.setup(r); err != nil {
+					t.Errorf("Setup before RemoveFrom() error = %v", err)
+					return
+				}
+			}
+			err := r.RemoveFrom(tt.args.colIRI, tt.args.it)
+			if (err != nil) && tt.wantErr.Error() != err.Error() {
+				t.Errorf("RemoveFrom() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr != nil {
+				// NOTE(marius): if we expected an error we don't need to following tests
+				return
+			}
+
+			it, err := r.Load(tt.args.colIRI)
+			if err != nil {
+				t.Errorf("Load() after RemoveFrom() error = %v", err)
+				return
+			}
+
+			col, ok := it.(vocab.CollectionInterface)
+			if !ok {
+				t.Errorf("Load() after RemoveFrom(), didn't return a CollectionInterface type")
+				return
+			}
+
+			if col.Contains(tt.args.it) {
+				t.Errorf("Load() after RemoveFrom(), the item is still in collection %#v", col.Collection())
+			}
+
+			// NOTE(marius): this is a bit of a hackish way to skip testing of the object when we didn't
+			// save it to the disk
+			if vocab.IsObject(tt.args.it) {
+				ob, err := r.Load(tt.args.it.GetLink())
+				if err != nil {
+					t.Errorf("Load() of the object after RemoveFrom() error = %v", err)
+					return
+				}
+				if !vocab.ItemsEqual(ob, tt.args.it) {
+					t.Errorf("Loaded item after RemoveFrom(), is not equal %#v with the one provided %#v", ob, tt.args.it)
+				}
+			}
+		})
+	}
+}
+
+func Test_repo_AddTo(t *testing.T) {
+	type args struct {
+		colIRI vocab.IRI
+		it     vocab.Item
+	}
+
+	tests := []struct {
+		name    string
+		path    string
+		setup   func(*repo) error
+		args    args
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			path:    t.TempDir(),
+			args:    args{},
+			wantErr: errors.NotFoundf("not found"), // empty iri can't be found, unsure if that makes sense
+		},
+		{
+			name: "collection doesn't exist",
+			path: t.TempDir(),
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: errPathNotFound("example.com/followers"),
+		},
+		{
+			name: "item doesn't exist",
+			path: t.TempDir(),
+			setup: func(r *repo) error {
+				_, err := saveCollection(r, defaultCol("https://example.com/followers"))
+				return err
+			},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: errors.NotFoundf("not found"),
+		},
+		{
+			name: "item exists in collection",
+			path: t.TempDir(),
+			setup: func(r *repo) error {
+				col := defaultCol("https://example.com/followers")
+				if _, err := saveCollection(r, col); err != nil {
+					return err
+				}
+				ob, err := save(r, vocab.Object{ID: "https://example.com"})
+				if err != nil {
+					return err
+				}
+				return r.AddTo(col.GetLink(), ob)
+			},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				path:   tt.path,
+				logger: logger,
+				cache:  cache.New(true),
+			}
+			if err := r.Open(); err != nil {
+				t.Errorf("Open before AddTo() error = %v", err)
+				return
+			}
+			if tt.setup != nil {
+				if err := tt.setup(r); err != nil {
+					t.Errorf("Setup before AddTo() error = %v", err)
+					return
+				}
+			}
+			err := r.AddTo(tt.args.colIRI, tt.args.it)
+			if tt.wantErr != nil {
+				if err != nil {
+					if tt.wantErr.Error() != err.Error() {
+						t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
+					}
+				} else {
+					t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+
+			it, err := r.Load(tt.args.colIRI)
+			if err != nil {
+				t.Errorf("Load() after AddTo() error = %v", err)
+				return
+			}
+
+			col, ok := it.(vocab.CollectionInterface)
+			if !ok {
+				t.Errorf("Load() after AddTo(), didn't return a CollectionInterface type")
+				return
+			}
+
+			if !col.Contains(tt.args.it) {
+				t.Errorf("Load() after AddTo(), the item is not in collection %#v", col.Collection())
+			}
+
+			ob, err := r.Load(tt.args.it.GetLink())
+			if err != nil {
+				t.Errorf("Load() of the object after AddTo() error = %v", err)
+				return
+			}
+			if !vocab.ItemsEqual(ob, tt.args.it) {
+				t.Errorf("Loaded item after AddTo(), is not equal %#v with the one provided %#v", ob, tt.args.it)
 			}
 		})
 	}

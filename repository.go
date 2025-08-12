@@ -132,8 +132,6 @@ func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
 
 // RemoveFrom
 func (r *repo) RemoveFrom(colIRI vocab.IRI, it vocab.Item) error {
-	var link vocab.IRI
-
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
 	itPath := iriPath(colIRI)
 	col, err := r.loadItemFromPath(getObjectKey(itPath))
@@ -141,31 +139,15 @@ func (r *repo) RemoveFrom(colIRI vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
-	linkPath := iriPath(link)
 	name := path.Base(iriPath(it.GetLink()))
 	err = onCollection(r, col, it, func(p string) error {
-		inCollection := false
+		// NOTE(marius): we check that we have a valid folder
 		colDir, err := r.root.Open(p)
 		if err != nil {
 			return nil
 		}
-		if dirInfo, err := colDir.ReadDir(-1); err == nil {
-			for _, di := range dirInfo {
-				fi, err := di.Info()
-				if err != nil {
-					continue
-				}
-				// NOTE(marius): we need to remove even if it's not a symlink
-				if fi.Name() == name /*&& isSymLink(fi)*/ {
-					inCollection = true
-				}
-			}
-		}
-		if inCollection {
-			fullLink := path.Join(r.path, linkPath, iriPath(it.GetLink()))
-			return os.RemoveAll(fullLink)
-		}
-		return nil
+		// TODO(marius): move to new os.Root functionality for unlinking
+		return os.RemoveAll(filepath.Join(colDir.Name(), name))
 	})
 	if err != nil {
 		return err
@@ -173,13 +155,17 @@ func (r *repo) RemoveFrom(colIRI vocab.IRI, it vocab.Item) error {
 
 	if orderedCollectionTypes.Contains(col.GetType()) {
 		err = vocab.OnOrderedCollection(col, func(c *vocab.OrderedCollection) error {
-			c.TotalItems -= 1
+			if c.TotalItems > 0 {
+				c.TotalItems -= 1
+			}
 			c.OrderedItems = nil
 			return nil
 		})
 	} else if collectionTypes.Contains(col.GetType()) {
 		err = vocab.OnCollection(col, func(c *vocab.Collection) error {
-			c.TotalItems -= 1
+			if c.TotalItems > 0 {
+				c.TotalItems -= 1
+			}
 			c.Items = nil
 			return nil
 		})
