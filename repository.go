@@ -518,7 +518,13 @@ func getAbsStoragePath(p string) (string, error) {
 
 func deleteItem(r *repo, it vocab.Item) error {
 	itemPath := iriPath(it.GetLink())
-	if err := r.root.Remove(itemPath); err != nil && !os.IsNotExist(err) {
+
+	colDir, err := r.root.Open(itemPath)
+	if err != nil {
+		return nil
+	}
+	// TODO(marius): move to new os.Root functionality for unlinking
+	if err = os.RemoveAll(colDir.Name()); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	r.removeFromCache(it.GetLink())
