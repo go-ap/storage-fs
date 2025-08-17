@@ -112,6 +112,15 @@ func filter(items vocab.ItemCollection, fil ...filters.Check) vocab.ItemCollecti
 	return *result
 }
 
+var testCWD = ""
+
+func getwd() (string, error) {
+	if testCWD != "" {
+		return testCWD, nil
+	}
+	return os.Getwd()
+}
+
 func Test_repo_Load(t *testing.T) {
 	basePath, _ := getwd()
 

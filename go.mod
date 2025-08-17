@@ -1,6 +1,6 @@
 module github.com/go-ap/storage-fs
 
-go 1.24
+go 1.25
 
 require (
 	git.sr.ht/~mariusor/lw v0.0.0-20250325163623-1639f3fb0e0d

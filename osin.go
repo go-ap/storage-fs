@@ -265,7 +265,7 @@ func (r *repo) CreateClient(c osin.Client) error {
 
 // RemoveClient
 func (r *repo) RemoveClient(id string) error {
-	return os.RemoveAll(r.oauthClientPath(clientsBucket, id))
+	return r.root.RemoveAll(r.oauthClientPath(clientsBucket, id))
 }
 
 // SaveAuthorize saves authorize data.
@@ -338,7 +338,7 @@ func (r *repo) LoadAuthorize(code string) (*osin.AuthorizeData, error) {
 
 // RemoveAuthorize revokes or deletes the authorization code.
 func (r *repo) RemoveAuthorize(code string) error {
-	return os.RemoveAll(filepath.Join(authorizeBucket, code))
+	return r.root.RemoveAll(filepath.Join(authorizeBucket, code))
 }
 
 // SaveAccess writes AccessData.
@@ -439,7 +439,7 @@ func (r *repo) LoadAccess(code string) (*osin.AccessData, error) {
 
 // RemoveAccess revokes or deletes an AccessData.
 func (r *repo) RemoveAccess(code string) error {
-	return os.RemoveAll(filepath.Join(accessBucket, code))
+	return r.root.RemoveAll(filepath.Join(accessBucket, code))
 }
 
 // LoadRefresh retrieves refresh AccessData. Client information MUST be loaded together.
@@ -463,5 +463,5 @@ func (r *repo) LoadRefresh(code string) (*osin.AccessData, error) {
 
 // RemoveRefresh revokes or deletes refresh AccessData.
 func (r *repo) RemoveRefresh(code string) error {
-	return os.RemoveAll(filepath.Join(refreshBucket, code))
+	return r.root.RemoveAll(filepath.Join(refreshBucket, code))
 }

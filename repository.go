@@ -141,13 +141,7 @@ func (r *repo) RemoveFrom(colIRI vocab.IRI, it vocab.Item) error {
 
 	name := path.Base(iriPath(it.GetLink()))
 	err = onCollection(r, col, it, func(p string) error {
-		// NOTE(marius): we check that we have a valid folder
-		colDir, err := r.root.Open(p)
-		if err != nil {
-			return nil
-		}
-		// TODO(marius): move to new os.Root functionality for unlinking
-		return os.RemoveAll(filepath.Join(colDir.Name(), name))
+		return r.root.RemoveAll(name)
 	})
 	if err != nil {
 		return err
@@ -284,9 +278,8 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 	}
 
 	linkPath := iriPath(link)
-	// TODO(marius): this still uses the old paths without the non-traversal resistant API
-	itOriginalPath := filepath.Join(r.path, iriPath(it.GetLink()))
-	fullLink := path.Join(r.path, linkPath, url.PathEscape(iriPath(it.GetLink())))
+	itOriginalPath := filepath.Join(iriPath(it.GetLink()))
+	fullLink := path.Join(linkPath, url.PathEscape(iriPath(it.GetLink())))
 
 	// we create a symlink to the persisted object in the current collection
 	err = onCollection(r, col, it, func(p string) error {
@@ -304,12 +297,6 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 			}
 		}
 
-		if itOriginalPath, err = filepath.Abs(itOriginalPath); err != nil {
-			return err
-		}
-		if fullLink, err = filepath.Abs(fullLink); err != nil {
-			return err
-		}
 		if itOriginalPath, err = filepath.Rel(fullLink, itOriginalPath); err != nil {
 			return err
 		}
@@ -322,8 +309,7 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		}
 		// NOTE(marius): we can't use hard links as we're linking to folders :(
 		// This would have been tremendously easier (as in, not having to compute paths) with hard-links.
-		// TODO(go1.25): use os.Root.Symlink
-		if err = os.Symlink(itOriginalPath, fullLink); err != nil {
+		if err = r.root.Symlink(itOriginalPath, fullLink); err != nil {
 			if !os.IsExist(err) {
 				r.logger.Debugf("unable to symlink to collection %s: %s", fullLink, err.Error())
 			}
@@ -453,12 +439,12 @@ func deleteCollectionFromPath(r repo, it vocab.Item) error {
 		return nil
 	}
 	itPath := iriPath(it.GetLink())
-	if fi, err := os.Stat(itPath); err != nil {
+	if fi, err := r.root.Stat(itPath); err != nil {
 		if !os.IsNotExist(err) {
 			return errors.NewNotFound(asPathErr(err, r.path), "not found")
 		}
 	} else if fi.IsDir() {
-		return os.Remove(itPath)
+		return r.root.Remove(itPath)
 	}
 	r.removeFromCache(it.GetLink())
 	return nil
@@ -519,12 +505,7 @@ func getAbsStoragePath(p string) (string, error) {
 func deleteItem(r *repo, it vocab.Item) error {
 	itemPath := iriPath(it.GetLink())
 
-	colDir, err := r.root.Open(itemPath)
-	if err != nil {
-		return nil
-	}
-	// TODO(marius): move to new os.Root functionality for unlinking
-	if err = os.RemoveAll(colDir.Name()); err != nil && !os.IsNotExist(err) {
+	if err := r.root.RemoveAll(itemPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	r.removeFromCache(it.GetLink())
@@ -774,7 +755,7 @@ func getOriginalIRI(root *os.Root, p string) (vocab.Item, error) {
 	if !fi.IsDir() {
 		return nil, nil
 	}
-	original, err := os.Readlink(dir)
+	original, err := root.Readlink(dir)
 	if err != nil {
 		return nil, nil
 	}
@@ -1081,15 +1062,6 @@ func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, err
 
 func Root(s *repo) *os.Root {
 	return s.root
-}
-
-var testCWD = ""
-
-func getwd() (string, error) {
-	if testCWD != "" {
-		return testCWD, nil
-	}
-	return os.Getwd()
 }
 
 var encodeFn = func(v any) ([]byte, error) {
