@@ -270,6 +270,9 @@ func (r *repo) RemoveClient(id string) error {
 
 // SaveAuthorize saves authorize data.
 func (r *repo) SaveAuthorize(data *osin.AuthorizeData) error {
+	if data == nil {
+		return errors.Errorf("unable to save nil authorization data")
+	}
 	root, err := r.openOauthRoot()
 	if err != nil {
 		return errors.Annotatef(err, "Invalid path %s", folder)

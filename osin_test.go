@@ -1,7 +1,6 @@
 package fs
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -10,6 +9,8 @@ import (
 	"testing"
 
 	"git.sr.ht/~mariusor/lw"
+	"github.com/go-ap/cache"
+	"github.com/go-ap/errors"
 	"github.com/openshift/osin"
 )
 
@@ -301,10 +302,6 @@ func Test_UpdateClient(t *testing.T) {
 	}
 }
 
-func Test_LoadAuthorize(t *testing.T) {
-	t.Skipf("TODO")
-}
-
 func Test_LoadAccess(t *testing.T) {
 	t.Skipf("TODO")
 }
@@ -334,9 +331,110 @@ func Test_SaveAccess(t *testing.T) {
 }
 
 func Test_SaveAuthorize(t *testing.T) {
-	t.Skipf("TODO")
+	tests := []struct {
+		name    string
+		path    string
+		setup   func(*repo) error
+		auth    *osin.AuthorizeData
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			path:    t.TempDir(),
+			wantErr: errors.Errorf("unable to save nil authorization data"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				path:   tt.path,
+				logger: logger,
+				cache:  cache.New(true),
+			}
+			if err := r.Open(); err != nil {
+				t.Errorf("Open before SaveAuthorize() error = %v", err)
+				return
+			}
+			if tt.setup != nil {
+				if err := tt.setup(r); err != nil {
+					t.Errorf("Setup before SaveAuthorize() error = %v", err)
+					return
+				}
+			}
+			err := r.SaveAuthorize(tt.auth)
+			if tt.wantErr != nil {
+				if err != nil {
+					if tt.wantErr.Error() != err.Error() {
+						t.Errorf("SaveAuthorize() error = %v, wantErr %v", err, tt.wantErr)
+					}
+				} else {
+					t.Errorf("SaveAuthorize() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+			got, err := r.LoadAccess(tt.auth.Code)
+			if tt.wantErr != nil {
+				if err != nil {
+					if tt.wantErr.Error() != err.Error() {
+						t.Errorf("LoadAuthorize() after SaveAuthorize() error = %v, wantErr %v", err, tt.wantErr)
+					}
+				} else {
+					t.Errorf("LoadAuthorize() after SaveAuthorize() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+			if !reflect.DeepEqual(got, tt.auth) {
+				t.Errorf("LoadAuthorize() after SaveAuthorize() got = %v, want %v", got, tt.auth)
+			}
+		})
+	}
 }
 
-func TestNewFSDBStoreStore(t *testing.T) {
-	t.Skipf("TODO")
+func Test_repo_LoadAuthorize(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		setup   func(*repo) error
+		code    string
+		want    *osin.AuthorizeData
+		wantErr error
+	}{
+		{
+			name: "empty",
+			path: t.TempDir(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				path:   tt.path,
+				logger: logger,
+				cache:  cache.New(true),
+			}
+			if err := r.Open(); err != nil {
+				t.Errorf("Open before LoadAuthorize() error = %v", err)
+				return
+			}
+			if tt.setup != nil {
+				if err := tt.setup(r); err != nil {
+					t.Errorf("Setup before LoadAuthorize() error = %v", err)
+					return
+				}
+			}
+			got, err := r.LoadAuthorize(tt.code)
+			if tt.wantErr != nil {
+				if err != nil {
+					if tt.wantErr.Error() != err.Error() {
+						t.Errorf("LoadAuthorize() error = %v, wantErr %v", err, tt.wantErr)
+					}
+				} else {
+					t.Errorf("LoadAuthorize() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("LoadAuthorize() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
