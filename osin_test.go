@@ -1,14 +1,18 @@
 package fs
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"git.sr.ht/~mariusor/lw"
+	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
 	"github.com/openshift/osin"
@@ -343,6 +347,15 @@ func Test_SaveAuthorize(t *testing.T) {
 			path:    t.TempDir(),
 			wantErr: errors.Errorf("unable to save nil authorization data"),
 		},
+		{
+			name: "save mock auth",
+			path: t.TempDir(),
+			setup: func(r *repo) error {
+				return r.CreateClient(defaultClient)
+			},
+			auth:    mockAuth("test-code123", defaultClient),
+			wantErr: nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -372,7 +385,7 @@ func Test_SaveAuthorize(t *testing.T) {
 				}
 				return
 			}
-			got, err := r.LoadAccess(tt.auth.Code)
+			got, err := r.LoadAuthorize(tt.auth.Code)
 			if tt.wantErr != nil {
 				if err != nil {
 					if tt.wantErr.Error() != err.Error() {
@@ -383,12 +396,32 @@ func Test_SaveAuthorize(t *testing.T) {
 				}
 				return
 			}
-			if !reflect.DeepEqual(got, tt.auth) {
-				t.Errorf("LoadAuthorize() after SaveAuthorize() got = %v, want %v", got, tt.auth)
+			gotJson, _ := json.Marshal(got)
+			wantJson, _ := json.Marshal(tt.auth)
+			if !bytes.Equal(gotJson, wantJson) {
+				t.Errorf("SaveAuthorize() got =\n%s\n====\n%s", gotJson, wantJson)
 			}
 		})
 	}
 }
+
+var (
+	defaultClient = &osin.DefaultClient{
+		Id:          "test-client",
+		Secret:      "asd",
+		RedirectUri: "https://example.com",
+		UserData:    nil,
+	}
+	mockAuth = func(code string, cl osin.Client) *osin.AuthorizeData {
+		return &osin.AuthorizeData{
+			Client:    cl,
+			Code:      code,
+			ExpiresIn: 10,
+			CreatedAt: time.Now().Add(10 * time.Minute).Round(10 * time.Minute),
+			UserData:  vocab.IRI("https://example.com/jdoe"),
+		}
+	}
+)
 
 func Test_repo_LoadAuthorize(t *testing.T) {
 	tests := []struct {
@@ -402,6 +435,21 @@ func Test_repo_LoadAuthorize(t *testing.T) {
 		{
 			name: "empty",
 			path: t.TempDir(),
+		},
+		{
+			name: "authorized",
+			path: t.TempDir(),
+			code: "test-code",
+			setup: func(r *repo) error {
+				if err := r.CreateClient(defaultClient); err != nil {
+					return err
+				}
+				if err := r.SaveAuthorize(mockAuth("test-code", defaultClient)); err != nil {
+					return err
+				}
+				return nil
+			},
+			want: mockAuth("test-code", defaultClient),
 		},
 	}
 	for _, tt := range tests {
@@ -432,8 +480,10 @@ func Test_repo_LoadAuthorize(t *testing.T) {
 				}
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("LoadAuthorize() got = %v, want %v", got, tt.want)
+			gotJson, _ := json.Marshal(got)
+			wantJson, _ := json.Marshal(tt.want)
+			if !bytes.Equal(gotJson, wantJson) {
+				t.Errorf("LoadAuthorize() got =\n%s\n====\n%s", gotJson, wantJson)
 			}
 		})
 	}
