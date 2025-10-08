@@ -310,11 +310,9 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		// NOTE(marius): we can't use hard links as we're linking to folders :(
 		// This would have been tremendously easier (as in, not having to compute paths) with hard-links.
 		if err = r.root.Symlink(itOriginalPath, fullLink); err != nil {
-			if !os.IsExist(err) {
-				r.logger.Debugf("unable to symlink to collection %s: %s", fullLink, err.Error())
-			}
+			return err
 		}
-		return err
+		return nil
 	})
 	if err != nil {
 		return errors.Annotatef(err, "unable to symlink object into collection")
