@@ -119,19 +119,20 @@ func (r *repo) Create(col vocab.CollectionInterface) (vocab.CollectionInterface,
 func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
 	var err error
 
-	if it, err = save(r, it); err == nil {
-		op := "Updated"
-		id := it.GetID()
-		if !id.IsValid() {
-			op = "Added"
+	op := "saved"
+	if r.preSaveHookFn != nil {
+		if err = r.preSaveHookFn(it); err != nil {
+			r.logger.WithContext(lw.Ctx{"err": err.Error(), "IRI": it.GetLink()}).Warnf("failed to execute PreSaveHook")
 		}
+	}
+	if it, err = save(r, it); err == nil {
 		r.logger.WithContext(lw.Ctx{"type": it.GetType(), "IRI": it.GetLink()}).Debugf("%s", op)
 	}
 	return it, err
 }
 
 // RemoveFrom
-func (r *repo) RemoveFrom(colIRI vocab.IRI, it vocab.Item) error {
+func (r *repo) RemoveFrom(colIRI vocab.IRI, items ...vocab.Item) error {
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
 	itPath := iriPath(colIRI)
 	col, err := r.loadItemFromPath(getObjectKey(itPath))
@@ -139,26 +140,32 @@ func (r *repo) RemoveFrom(colIRI vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
-	name := path.Base(iriPath(it.GetLink()))
-	err = onCollection(r, col, it, func(p string) error {
-		return r.root.RemoveAll(name)
-	})
-	if err != nil {
-		return err
+	for _, it := range items {
+		name := path.Base(iriPath(it.GetLink()))
+		err = onCollection(r, col, it, func(p string) error {
+			return r.root.RemoveAll(name)
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	if orderedCollectionTypes.Contains(col.GetType()) {
 		err = vocab.OnOrderedCollection(col, func(c *vocab.OrderedCollection) error {
-			if c.TotalItems > 0 {
-				c.TotalItems -= 1
+			if c.TotalItems <= uint(len(items)) {
+				c.TotalItems = 0
+			} else {
+				c.TotalItems -= uint(len(items))
 			}
 			c.OrderedItems = nil
 			return nil
 		})
 	} else if collectionTypes.Contains(col.GetType()) {
 		err = vocab.OnCollection(col, func(c *vocab.Collection) error {
-			if c.TotalItems > 0 {
-				c.TotalItems -= 1
+			if c.TotalItems <= uint(len(items)) {
+				c.TotalItems = 0
+			} else {
+				c.TotalItems -= uint(len(items))
 			}
 			c.Items = nil
 			return nil
@@ -169,12 +176,14 @@ func (r *repo) RemoveFrom(colIRI vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
-	err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Remove, it))
-	if err != nil && !errors.Is(err, cacheDisabled) {
-		r.logger.Errorf("unable to remote item %s from collection index: %s", it.GetLink(), err)
-	}
+	for _, it := range items {
+		err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Remove, it))
+		if err != nil && !errors.Is(err, cacheDisabled) {
+			r.logger.Errorf("unable to remote item %s from collection index: %s", it.GetLink(), err)
+		}
 
-	r.removeFromCache(it.GetLink())
+		r.removeFromCache(it.GetLink())
+	}
 	return nil
 }
 
@@ -240,7 +249,7 @@ var orderedCollectionTypes = vocab.ActivityVocabularyTypes{vocab.OrderedCollecti
 var collectionTypes = vocab.ActivityVocabularyTypes{vocab.CollectionPageType, vocab.CollectionType}
 
 // AddTo
-func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
+func (r *repo) AddTo(colIRI vocab.IRI, items ...vocab.Item) error {
 	var link vocab.IRI
 
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
@@ -261,6 +270,7 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 	}
 
 	parent, destination := allStorageCollections.Split(colIRI)
+	// TODO(marius): remove the need for storage collection check
 	if isStorageCollectionKey(string(destination)) {
 		// Create the collection on the object, if it doesn't exist
 		i, err := r.loadFromIRI(parent, filters.WithMaxCount(1))
@@ -278,55 +288,57 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 	}
 
 	linkPath := iriPath(link)
-	itOriginalPath := filepath.Join(iriPath(it.GetLink()))
-	fullLink := path.Join(linkPath, url.PathEscape(iriPath(it.GetLink())))
+	for _, it := range items {
+		itOriginalPath := filepath.Join(iriPath(it.GetLink()))
+		fullLink := path.Join(linkPath, url.PathEscape(iriPath(it.GetLink())))
 
-	// we create a symlink to the persisted object in the current collection
-	err = onCollection(r, col, it, func(p string) error {
-		if err := mkDirIfNotExists(r.root, p); err != nil {
-			return errors.Annotatef(err, "Unable to create collection folder %s", p)
-		}
-		// NOTE(marius): if 'it' IRI belongs to the 'col' collection we can skip symlinking it
-		if it.GetLink().Contains(col.GetLink(), true) {
-			return nil
-		}
-
-		if fi, _ := r.root.Stat(fullLink); fi != nil {
-			if isSymLink(fi) {
+		// we create a symlink to the persisted object in the current collection
+		err = onCollection(r, col, it, func(p string) error {
+			if err := mkDirIfNotExists(r.root, p); err != nil {
+				return errors.Annotatef(err, "Unable to create collection folder %s", p)
+			}
+			// NOTE(marius): if 'it' IRI belongs to the 'col' collection we can skip symlinking it
+			if it.GetLink().Contains(col.GetLink(), true) {
 				return nil
 			}
-		}
 
-		if itOriginalPath, err = filepath.Rel(fullLink, itOriginalPath); err != nil {
-			return err
-		}
-		// TODO(marius): using filepath.Rel returns one extra parent for some reason, I need to look into why
-		itOriginalPath = strings.Replace(itOriginalPath, "../", "", 1)
-		if itOriginalPath == "." {
-			// NOTE(marius): if the relative path resolves to the current folder, we don't try to symlink
-			r.logger.Debugf("symlinking path resolved to the current directory: %s", itOriginalPath)
+			if fi, _ := r.root.Stat(fullLink); fi != nil {
+				if isSymLink(fi) {
+					return nil
+				}
+			}
+
+			if itOriginalPath, err = filepath.Rel(fullLink, itOriginalPath); err != nil {
+				return err
+			}
+			// TODO(marius): using filepath.Rel returns one extra parent for some reason, I need to look into why
+			itOriginalPath = strings.Replace(itOriginalPath, "../", "", 1)
+			if itOriginalPath == "." {
+				// NOTE(marius): if the relative path resolves to the current folder, we don't try to symlink
+				r.logger.Debugf("symlinking path resolved to the current directory: %s", itOriginalPath)
+				return nil
+			}
+			// NOTE(marius): we can't use hard links as we're linking to folders :(
+			// This would have been tremendously easier (as in, not having to compute paths) with hard-links.
+			if err = r.root.Symlink(itOriginalPath, fullLink); err != nil {
+				return err
+			}
 			return nil
+		})
+		if err != nil {
+			return errors.Annotatef(err, "unable to symlink object into collection")
 		}
-		// NOTE(marius): we can't use hard links as we're linking to folders :(
-		// This would have been tremendously easier (as in, not having to compute paths) with hard-links.
-		if err = r.root.Symlink(itOriginalPath, fullLink); err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		return errors.Annotatef(err, "unable to symlink object into collection")
 	}
 
 	if orderedCollectionTypes.Contains(col.GetType()) {
 		err = vocab.OnOrderedCollection(col, func(c *vocab.OrderedCollection) error {
-			c.TotalItems += 1
+			c.TotalItems += uint(len(items))
 			c.OrderedItems = nil
 			return nil
 		})
 	} else if collectionTypes.Contains(col.GetType()) {
 		err = vocab.OnCollection(col, func(c *vocab.Collection) error {
-			c.TotalItems += 1
+			c.TotalItems += uint(len(items))
 			c.Items = nil
 			return nil
 		})
@@ -336,9 +348,11 @@ func (r *repo) AddTo(colIRI vocab.IRI, it vocab.Item) error {
 		return err
 	}
 
-	err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Add, it))
-	if err != nil && !errors.IsNotImplemented(err) {
-		r.logger.Debugf("unable to add item %s to collection index: %s", it.GetLink(), err)
+	for _, it := range items {
+		err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Add, it))
+		if err != nil && !errors.IsNotImplemented(err) {
+			r.logger.Debugf("unable to add item %s to collection index: %s", it.GetLink(), err)
+		}
 	}
 	return nil
 }
