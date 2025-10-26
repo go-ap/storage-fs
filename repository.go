@@ -636,7 +636,7 @@ func (r *repo) loadOneFromIRI(i vocab.IRI) (vocab.Item, error) {
 			result = col.Collection().First()
 			return nil
 		})
-		if vocab.IsIRI(result) && result.GetLink().Equals(i.GetLink(), false) {
+		if vocab.IsIRI(result) && result.GetLink().Equal(i.GetLink(), false) {
 			// NOTE(marius): this covers the case where we ended up with the same IRI
 			return nil, errors.NotFoundf("nothing found")
 		}
@@ -697,7 +697,7 @@ func loadFilteredPropsForActivity(r *repo, fil ...filters.Check) func(a *vocab.A
 	return func(a *vocab.Activity) error {
 		var err error
 		if !vocab.IsNil(a.Object) {
-			if a.ID.Equals(a.Object.GetLink(), false) {
+			if a.ID.Equal(a.Object.GetLink(), false) {
 				//r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
 				return errors.BadGatewayf("invalid activity with id %s, referencing itself as an object: %s", a.ID, a.Object.GetLink())
 			}
@@ -716,7 +716,7 @@ func loadFilteredPropsForIntransitiveActivity(r *repo, fil ...filters.Check) fun
 	return func(a *vocab.IntransitiveActivity) error {
 		var err error
 		//if !vocab.IsNil(a.Actor) {
-		//	if a.ID.Equals(a.Actor.GetLink(), false) {
+		//	if a.ID.Equal(a.Actor.GetLink(), false) {
 		//		//r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original actor. (%s)", a.Type, a.ID)
 		//		return errors.BadGatewayf("invalid activity with id %s, referencing itself as an actor: %s", a.ID, a.Actor.GetLink())
 		//	}
@@ -725,7 +725,7 @@ func loadFilteredPropsForIntransitiveActivity(r *repo, fil ...filters.Check) fun
 		//	}
 		//}
 		if !vocab.IsNil(a.Target) {
-			if a.ID.Equals(a.Target.GetLink(), false) {
+			if a.ID.Equal(a.Target.GetLink(), false) {
 				//r.logger.Debugf("Invalid %s activity (probably from mastodon), that overwrote the original object. (%s)", a.Type, a.ID)
 				return errors.BadGatewayf("invalid activity with id %s, referencing itself as a target: %s", a.ID, a.Target.GetLink())
 			}
