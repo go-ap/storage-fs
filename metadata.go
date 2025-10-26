@@ -9,15 +9,15 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"golang.org/x/crypto/bcrypt"
 	"math/rand"
 
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // PasswordSet
-func (r *repo) PasswordSet(it vocab.Item, pw []byte) error {
+func (r *repo) PasswordSet(iri vocab.IRI, pw []byte) error {
 	pw, err := bcrypt.GenerateFromPassword(pw, -1)
 	if err != nil {
 		return errors.Annotatef(err, "could not generate pw hash")
@@ -25,15 +25,15 @@ func (r *repo) PasswordSet(it vocab.Item, pw []byte) error {
 	m := Metadata{
 		Pw: pw,
 	}
-	return r.SaveMetadata(it.GetLink(), m)
+	return r.SaveMetadata(iri, m)
 }
 
 // PasswordCheck
-func (r *repo) PasswordCheck(it vocab.Item, pw []byte) error {
+func (r *repo) PasswordCheck(iri vocab.IRI, pw []byte) error {
 	m := new(Metadata)
 
-	if err := r.LoadMetadata(it.GetLink(), m); err != nil {
-		return errors.Annotatef(err, "Could not find load metadata for %s", it)
+	if err := r.LoadMetadata(iri, m); err != nil {
+		return errors.Annotatef(err, "Could not find load metadata for %s", iri)
 	}
 
 	if err := bcrypt.CompareHashAndPassword(m.Pw, pw); err != nil {
