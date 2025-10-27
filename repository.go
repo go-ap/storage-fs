@@ -28,6 +28,7 @@ var errNotImplemented = errors.NotImplementedf("not implemented")
 
 var emptyLogger = lw.Dev()
 
+type ItemFn func(vocab.Item) error
 type Config struct {
 	Path        string
 	CacheEnable bool
@@ -120,11 +121,6 @@ func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
 	var err error
 
 	op := "saved"
-	if r.preSaveHookFn != nil {
-		if err = r.preSaveHookFn(it); err != nil {
-			r.logger.WithContext(lw.Ctx{"err": err.Error(), "IRI": it.GetLink()}).Warnf("failed to execute PreSaveHook")
-		}
-	}
 	if it, err = save(r, it); err == nil {
 		r.logger.WithContext(lw.Ctx{"type": it.GetType(), "IRI": it.GetLink()}).Debugf("%s", op)
 	}
