@@ -127,7 +127,7 @@ func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
 	return it, err
 }
 
-// RemoveFrom
+// RemoveFrom removes the items from the colIRI collection.
 func (r *repo) RemoveFrom(colIRI vocab.IRI, items ...vocab.Item) error {
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
 	itPath := iriPath(colIRI)
@@ -136,10 +136,11 @@ func (r *repo) RemoveFrom(colIRI vocab.IRI, items ...vocab.Item) error {
 		return err
 	}
 
+	linkPath := iriPath(colIRI)
 	for _, it := range items {
-		name := path.Base(iriPath(it.GetLink()))
+		fullLink := path.Join(linkPath, url.PathEscape(iriPath(it.GetLink())))
 		err = onCollection(r, col, it, func(p string) error {
-			return r.root.RemoveAll(name)
+			return r.root.RemoveAll(fullLink)
 		})
 		if err != nil {
 			return err
@@ -244,10 +245,8 @@ func createCollection(r *repo, colIRI vocab.IRI, owner vocab.Item) (vocab.Collec
 var orderedCollectionTypes = vocab.ActivityVocabularyTypes{vocab.OrderedCollectionPageType, vocab.OrderedCollectionType}
 var collectionTypes = vocab.ActivityVocabularyTypes{vocab.CollectionPageType, vocab.CollectionType}
 
-// AddTo
+// AddTo adds the items to the colIRI collection.
 func (r *repo) AddTo(colIRI vocab.IRI, items ...vocab.Item) error {
-	var link vocab.IRI
-
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
 	itPath := iriPath(colIRI)
 	col, err := r.loadItemFromPath(getObjectKey(itPath))
@@ -265,28 +264,16 @@ func (r *repo) AddTo(colIRI vocab.IRI, items ...vocab.Item) error {
 		}
 	}
 
-	parent, destination := allStorageCollections.Split(colIRI)
-	// TODO(marius): remove the need for storage collection check
-	if isStorageCollectionKey(string(destination)) {
-		// Create the collection on the object, if it doesn't exist
-		i, err := r.loadFromIRI(parent, filters.WithMaxCount(1))
-		if err != nil {
-			return err
-		}
-		if p, ok := destination.AddTo(i); ok {
-			_, _ = save(r, i)
-			link = p
-		} else {
-			link = destination.IRI(i)
-		}
-	} else {
-		return errors.Newf("Invalid collection %s", destination)
-	}
-
-	linkPath := iriPath(link)
+	linkPath := iriPath(colIRI)
 	for _, it := range items {
 		itOriginalPath := filepath.Join(iriPath(it.GetLink()))
 		fullLink := path.Join(linkPath, url.PathEscape(iriPath(it.GetLink())))
+		if vocab.IsIRI(it) {
+			it, err = r.loadOneFromIRI(it.GetLink())
+			if err != nil {
+				return errors.NewNotFound(err, "invalid item to add to collection")
+			}
+		}
 
 		// we create a symlink to the persisted object in the current collection
 		err = onCollection(r, col, it, func(p string) error {
@@ -1030,7 +1017,9 @@ func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil
 
 func buildCollection(items vocab.ItemCollection) vocab.WithCollectionFn {
 	return func(col *vocab.Collection) error {
-		col.Items = items
+		if len(items) > 0 {
+			col.Items = items
+		}
 		col.TotalItems = uint(len(items))
 		return nil
 	}
@@ -1038,7 +1027,9 @@ func buildCollection(items vocab.ItemCollection) vocab.WithCollectionFn {
 
 func buildOrderedCollection(items vocab.ItemCollection) vocab.WithOrderedCollectionFn {
 	return func(col *vocab.OrderedCollection) error {
-		col.OrderedItems = items
+		if len(items) > 0 {
+			col.OrderedItems = items
+		}
 		col.TotalItems = uint(len(items))
 		return nil
 	}

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"git.sr.ht/~mariusor/lw"
@@ -14,6 +15,7 @@ import (
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
 	"github.com/go-ap/filters"
+	"github.com/google/go-cmp/cmp"
 	"golang.org/x/sys/unix"
 )
 
@@ -353,7 +355,10 @@ func Test_repo_Load(t *testing.T) {
 func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
 	return &vocab.OrderedCollection{
 		ID:           id,
+		AttributedTo: vocab.IRI("https://example.com"),
 		Type:         vocab.OrderedCollectionType,
+		Published:    time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
+		CC:           vocab.ItemCollection{vocab.PublicNS},
 		OrderedItems: make(vocab.ItemCollection, 0),
 	}
 }
@@ -376,28 +381,30 @@ func Test_repo_createCollection(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   t.TempDir(),
-				cache:  cache.New(false),
-				logger: logger,
-			}
-			_ = r.Open()
-			defer r.Close()
+			synctest.Test(t, func(t *testing.T) {
+				r := &repo{
+					path:   t.TempDir(),
+					cache:  cache.New(false),
+					logger: logger,
+				}
+				_ = r.Open()
+				defer r.Close()
 
-			col, err := createCollectionInPath(r, tt.iri, tt.owner)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if !vocab.ItemsEqual(col, tt.expected.GetLink()) {
-				t.Errorf("Returned collection is not equal to expected %v: %v", tt.expected, col)
-			}
-			saved, err := r.Load(tt.iri)
-			if err != nil {
-				t.Errorf("Unable to load collection at IRI %q: %s", tt.iri, err)
-			}
-			if !vocab.ItemsEqual(saved, tt.expected) {
-				t.Errorf("Saved collection is not equal to expected %v: %v", tt.expected, saved)
-			}
+				col, err := createCollectionInPath(r, tt.iri, tt.owner)
+				if (err != nil) != tt.wantErr {
+					t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				if !vocab.ItemsEqual(col, tt.expected.GetLink()) {
+					t.Errorf("Returned collection is not equal to expected %v: %v", tt.expected, col)
+				}
+				saved, err := r.Load(tt.iri)
+				if err != nil {
+					t.Errorf("Unable to load collection at IRI %q: %s", tt.iri, err)
+				}
+				if !vocab.ItemsEqual(tt.expected, saved) {
+					t.Errorf("Saved collection is not equal to expected %s", cmp.Diff(tt.expected, saved))
+				}
+			})
 		})
 	}
 }
@@ -580,7 +587,7 @@ func Test_repo_AddTo(t *testing.T) {
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
 			},
-			wantErr: errors.NotFoundf("not found"),
+			wantErr: errors.NotFoundf("invalid item to add to collection"),
 		},
 		{
 			name: "item exists in collection",
