@@ -301,7 +301,11 @@ func (r *repo) SaveAuthorize(data *osin.AuthorizeData) error {
 		CreatedAt:   data.CreatedAt.UTC(),
 	}
 	if data.UserData != nil {
-		a.UserData = data.UserData.(vocab.IRI)
+		var ok bool
+		a.UserData, ok = data.UserData.(vocab.IRI)
+		if !ok {
+			r.logger.Errorf("unable to convert Authorize User Data to client actor IRI")
+		}
 	}
 
 	authorizePath := filepath.Join(authorizeBucket, a.Code)
@@ -336,7 +340,10 @@ func (r *repo) loadAuthorizeFromPath(authPath string) (*osin.AuthorizeData, erro
 		}
 		return nil
 	})
-	return data, err
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 // LoadAuthorize looks up AuthorizeData by a code.
@@ -349,7 +356,12 @@ func (r *repo) LoadAuthorize(code string) (*osin.AuthorizeData, error) {
 
 // RemoveAuthorize revokes or deletes the authorization code.
 func (r *repo) RemoveAuthorize(code string) error {
-	return r.root.RemoveAll(filepath.Join(authorizeBucket, code))
+	root, err := r.openOauthRoot()
+	if err != nil {
+		return errors.Annotatef(err, "Invalid path %s", folder)
+	}
+	authPath := filepath.Join(authorizeBucket, code)
+	return root.RemoveAll(authPath)
 }
 
 // SaveAccess writes AccessData.
