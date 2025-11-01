@@ -448,7 +448,10 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 		}
 		return nil
 	})
-	return result, err
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // LoadAccess retrieves access data by token. Client information MUST be loaded together.
@@ -462,7 +465,12 @@ func (r *repo) LoadAccess(code string) (*osin.AccessData, error) {
 
 // RemoveAccess revokes or deletes an AccessData.
 func (r *repo) RemoveAccess(code string) error {
-	return r.root.RemoveAll(filepath.Join(accessBucket, code))
+	root, err := r.openOauthRoot()
+	if err != nil {
+		return errors.Annotatef(err, "Invalid path %s", folder)
+	}
+	accessPath := filepath.Join(accessBucket, code)
+	return root.RemoveAll(accessPath)
 }
 
 // LoadRefresh retrieves refresh AccessData. Client information MUST be loaded together.
@@ -486,5 +494,10 @@ func (r *repo) LoadRefresh(code string) (*osin.AccessData, error) {
 
 // RemoveRefresh revokes or deletes refresh AccessData.
 func (r *repo) RemoveRefresh(code string) error {
-	return r.root.RemoveAll(filepath.Join(refreshBucket, code))
+	root, err := r.openOauthRoot()
+	if err != nil {
+		return errors.Annotatef(err, "Invalid path %s", folder)
+	}
+	refreshPath := filepath.Join(refreshBucket, code)
+	return root.RemoveAll(refreshPath)
 }
