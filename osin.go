@@ -186,7 +186,10 @@ func (r *repo) loadClientFromPath(clientPath string) (osin.Client, error) {
 		c.UserData = cl.UserData
 		return nil
 	})
-	return c, err
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 func (r *repo) oauthClientPath(pieces ...string) string {
@@ -265,7 +268,12 @@ func (r *repo) CreateClient(c osin.Client) error {
 
 // RemoveClient
 func (r *repo) RemoveClient(id string) error {
-	return r.root.RemoveAll(r.oauthClientPath(clientsBucket, id))
+	root, err := r.openOauthRoot()
+	if err != nil {
+		return errors.Annotatef(err, "Invalid path %s", folder)
+	}
+	clientPath := r.oauthClientPath(clientsBucket, id)
+	return root.RemoveAll(clientPath)
 }
 
 // SaveAuthorize saves authorize data.
