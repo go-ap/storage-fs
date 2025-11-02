@@ -286,29 +286,7 @@ func (r *repo) SaveAuthorize(data *osin.AuthorizeData) error {
 		return errors.Annotatef(err, "Invalid path %s", folder)
 	}
 
-	a := auth{
-		Client: cl{
-			Id:          data.Client.GetId(),
-			Secret:      data.Client.GetSecret(),
-			RedirectUri: data.Client.GetRedirectUri(),
-			UserData:    data.Client.GetUserData(),
-		},
-		Code:        data.Code,
-		ExpiresIn:   time.Duration(data.ExpiresIn),
-		Scope:       data.Scope,
-		RedirectURI: data.RedirectUri,
-		State:       data.State,
-		CreatedAt:   data.CreatedAt.UTC(),
-	}
-	if data.UserData != nil {
-		var ok bool
-		a.UserData, ok = data.UserData.(vocab.IRI)
-		if !ok {
-			r.logger.Errorf("unable to convert Authorize User Data to client actor IRI")
-		}
-	}
-
-	authorizePath := filepath.Join(authorizeBucket, a.Code)
+	authorizePath := filepath.Join(authorizeBucket, data.Code)
 	return putItem(root, authorizePath, data)
 }
 
