@@ -407,7 +407,9 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 		result.Scope = access.Scope
 		result.RedirectUri = access.RedirectURI
 		result.CreatedAt = access.CreatedAt.UTC()
-		result.UserData = access.Extra
+		if extra, ok := access.Extra.(string); ok {
+			result.UserData = vocab.IRI(extra)
+		}
 
 		if access.Authorize != "" {
 			if data, _ := r.loadAuthorizeFromPath(filepath.Join(authorizeBucket, access.Authorize)); data != nil {
