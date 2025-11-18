@@ -10,7 +10,14 @@ func Clean(conf Config) error {
 	return os.RemoveAll(conf.Path)
 }
 
-func Bootstrap(_ Config) error {
+func Bootstrap(conf Config) error {
+	if _, err := os.Stat(conf.Path); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		} else {
+			return os.MkdirAll(conf.Path, defaultDirPerm)
+		}
+	}
 	return nil
 }
 
