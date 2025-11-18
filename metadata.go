@@ -44,10 +44,13 @@ func (r *repo) PasswordCheck(iri vocab.IRI, pw []byte) error {
 
 // LoadMetadata
 func (r *repo) LoadMetadata(iri vocab.IRI, m any) error {
+	if r == nil || r.root == nil {
+		return errNotOpen
+	}
 	p := iriPath(iri)
 	raw, err := loadRaw(r.root, getMetadataKey(p))
 	if err != nil {
-		err = errors.NewNotFound(asPathErr(err, r.path), "Could not find metadata in path %s", sanitizePath(p, r.path))
+		err = errors.NewNotFound(err, "Could not find metadata in path %s", p)
 		return err
 	}
 	if err = decodeFn(raw, m); err != nil {
@@ -58,6 +61,9 @@ func (r *repo) LoadMetadata(iri vocab.IRI, m any) error {
 
 // SaveMetadata
 func (r *repo) SaveMetadata(iri vocab.IRI, m any) error {
+	if r == nil || r.root == nil {
+		return errNotOpen
+	}
 	entryBytes, err := encodeFn(m)
 	if err != nil {
 		return errors.Annotatef(err, "Could not marshal metadata")
@@ -75,7 +81,7 @@ func (r *repo) LoadKey(iri vocab.IRI) (crypto.PrivateKey, error) {
 	m := new(Metadata)
 
 	if err := r.LoadMetadata(iri, m); err != nil {
-		return nil, asPathErr(err, r.path)
+		return nil, err
 	}
 
 	b, _ := pem.Decode(m.PrivateKey)

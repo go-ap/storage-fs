@@ -61,7 +61,7 @@ func saveFsClient(client cl, basePath string) error {
 	return saveFsItem(client, testClientPath)
 }
 
-func initialize(tempFolder string) *repo {
+func initializeTemp(tempFolder string) *repo {
 	_ = os.MkdirAll(path.Join(tempFolder, folder, clientsBucket), defaultDirPerm)
 	_ = os.MkdirAll(path.Join(tempFolder, folder, accessBucket), defaultDirPerm)
 	_ = os.MkdirAll(path.Join(tempFolder, folder, authorizeBucket), defaultDirPerm)
@@ -117,7 +117,7 @@ var loadClientTests = map[string]struct {
 func Test_ListClients(t *testing.T) {
 	tempFolder := t.TempDir()
 	for name, tt := range loadClientTests {
-		s := initialize(tempFolder)
+		s := initializeTemp(tempFolder)
 		clientsPath := filepath.Join(tempFolder, folder, clientsBucket)
 		if err := saveFsClients(clientsPath, tt.clients...); err != nil {
 			t.Logf("Unable to save clients: %s", err)
@@ -161,7 +161,7 @@ func Test_Clone(t *testing.T) {
 func Test_GetClient(t *testing.T) {
 	tempFolder := t.TempDir()
 	defer cleanup(tempFolder)
-	s := initialize(tempFolder)
+	s := initializeTemp(tempFolder)
 
 	for name, tt := range loadClientTests {
 		clientsPath := filepath.Join(tempFolder, folder, clientsBucket)
@@ -215,7 +215,7 @@ var createClientTests = map[string]struct {
 func Test_CreateClient(t *testing.T) {
 	tempFolder := t.TempDir()
 	defer cleanup(tempFolder)
-	s := initialize(tempFolder)
+	s := initializeTemp(tempFolder)
 
 	for name, tt := range createClientTests {
 		t.Run(name, func(t *testing.T) {
@@ -262,7 +262,7 @@ func Test_CreateClient(t *testing.T) {
 func Test_UpdateClient(t *testing.T) {
 	tempFolder := t.TempDir()
 	defer cleanup(tempFolder)
-	s := initialize(tempFolder)
+	s := initializeTemp(tempFolder)
 
 	for name, tt := range createClientTests {
 		t.Run(name, func(t *testing.T) {

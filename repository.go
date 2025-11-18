@@ -24,7 +24,7 @@ import (
 var encodeItemFn = vocab.MarshalJSON
 var decodeItemFn = vocab.UnmarshalJSON
 
-var errNotImplemented = errors.NotImplementedf("not implemented")
+var errNotOpen = errors.Newf("repository not open")
 
 var emptyLogger = lw.Dev()
 
@@ -175,7 +175,7 @@ func (r *repo) RemoveFrom(colIRI vocab.IRI, items ...vocab.Item) error {
 
 	for _, it := range items {
 		err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Remove, it))
-		if err != nil && !errors.Is(err, cacheDisabled) {
+		if err != nil && !errors.Is(err, indexDisabled) {
 			r.logger.Errorf("unable to remote item %s from collection index: %s", it.GetLink(), err)
 		}
 
@@ -190,8 +190,6 @@ func isSymLink(fi os.FileInfo) bool {
 	}
 	return fi.Mode()&os.ModeSymlink == os.ModeSymlink
 }
-
-var allStorageCollections = append(vocab.ActivityPubCollections, filters.FedBOXCollections...)
 
 func iriPath(iri vocab.IRI) string {
 	u, err := iri.URL()
@@ -426,7 +424,7 @@ func createCollectionInPath(r *repo, it, owner vocab.Item) (vocab.Item, error) {
 		return nil, errors.Annotatef(err, "saving collection object is not done")
 	}
 
-	return it.GetLink(), asPathErr(mkDirIfNotExists(r.root, itPath), r.path)
+	return it.GetLink(), asPathErr(mkDirIfNotExists(r.root, itPath))
 }
 
 func deleteCollectionFromPath(r repo, it vocab.Item) error {
@@ -436,7 +434,7 @@ func deleteCollectionFromPath(r repo, it vocab.Item) error {
 	itPath := iriPath(it.GetLink())
 	if fi, err := r.root.Stat(itPath); err != nil {
 		if !os.IsNotExist(err) {
-			return errors.NewNotFound(asPathErr(err, r.path), "not found")
+			return errors.NewNotFound(asPathErr(err), "not found")
 		}
 	} else if fi.IsDir() {
 		return r.root.Remove(itPath)
@@ -511,10 +509,10 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 	if err := createCollections(r, it); err != nil {
 		return it, errors.Annotatef(err, "could not create object's collections")
 	}
-	_ = loadIndex(r)
+	_ = r.loadIndex()
 
 	defer func() {
-		_ = saveIndex(r)
+		_ = r.saveIndex()
 	}()
 
 	writeSingleObjFn := func(it vocab.Item) (vocab.Item, error) {
@@ -720,20 +718,19 @@ func loadFilteredPropsForIntransitiveActivity(r *repo, fil ...filters.Check) fun
 	}
 }
 
-func sanitizePath(p, prefix string) string {
-	p = strings.TrimPrefix(p, prefix)
+func sanitizePath(p string) string {
 	p = strings.TrimSuffix(p, objectKey)
 	p = strings.TrimSuffix(p, metaDataKey)
 	return strings.Trim(p, "/")
 }
 
-func asPathErr(err error, prefix string) error {
+func asPathErr(err error) error {
 	if err == nil {
 		return nil
 	}
 	pe := new(fs.PathError)
 	if ok := errors.As(err, &pe); ok {
-		pe.Path = sanitizePath(pe.Path, prefix)
+		pe.Path = sanitizePath(pe.Path)
 		return pe
 	}
 	return err
@@ -807,7 +804,7 @@ func loadRawFromPath(root *os.Root, p string) (vocab.Item, error) {
 // loadItemFromPath
 func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, error) {
 	if r.root == nil {
-		return nil, errors.Errorf("must open storage")
+		return nil, errNotOpen
 	}
 	cachedIt := r.loadFromCache(r.iriFromPath(p))
 
@@ -819,7 +816,7 @@ func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, err
 	var err error
 	if vocab.IsNil(it) || vocab.IsIRI(it) {
 		if it, err = loadRawFromPath(r.root, p); err != nil {
-			return nil, asPathErr(err, r.path)
+			return nil, asPathErr(err)
 		}
 	}
 	if it == nil || vocab.IsNil(it) {
@@ -860,7 +857,7 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 		return nil, nil
 	}
 
-	_ = loadIndex(r)
+	_ = r.loadIndex()
 
 	// NOTE(marius): let's make sure that if we have filters for authorization/recipients
 	// we respect them for the collection itself.
@@ -892,7 +889,7 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 		err = fs.WalkDir(r.root.FS(), colDirPath, func(p string, info os.DirEntry, err error) error {
 			if err != nil && os.IsNotExist(err) {
 				if isStorageCollectionKey(p) {
-					return errors.NewNotFound(asPathErr(err, r.path), "not found")
+					return errors.NewNotFound(asPathErr(err), "not found")
 				}
 				return nil
 			}
@@ -1047,13 +1044,13 @@ func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, err
 			fil = filters.Checks{filters.SameID(iri)}
 		}
 		if it, err = r.loadItemFromPath(getObjectKey(itPath), fil...); err != nil {
-			return nil, errors.NewNotFound(asPathErr(err, r.path), "not found")
+			return nil, errors.NewNotFound(asPathErr(err), "not found")
 		}
 		if vocab.IsNil(it) {
-			return nil, errors.NewNotFound(asPathErr(err, r.path), "not found")
+			return nil, errors.NewNotFound(asPathErr(err), "not found")
 		}
 		if vocab.IsIRI(it) {
-			return nil, errors.NewNotFound(asPathErr(err, r.path), "not found")
+			return nil, errors.NewNotFound(asPathErr(err), "not found")
 		}
 	}
 	return it, err

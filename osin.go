@@ -79,12 +79,8 @@ func mkDirIfNotExists(root *os.Root, p string) (err error) {
 			return err
 		}
 	}
-	pieces := strings.Split(p, string(os.PathSeparator))
-	for i := range pieces {
-		pp := filepath.Join(pieces[:i+1]...)
-		if err = root.Mkdir(pp, defaultDirPerm); err != nil && !os.IsExist(err) {
-			return err
-		}
+	if err = root.MkdirAll(p, defaultDirPerm); err != nil && !os.IsExist(err) {
+		return err
 	}
 	fi, err = root.Stat(p)
 	if err != nil {
@@ -120,7 +116,7 @@ func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) (ui
 	if isOauthStorageCollectionKey(itPath) {
 		err = fs.WalkDir(root.FS(), itPath, func(p string, info os.DirEntry, err error) error {
 			if err != nil && os.IsNotExist(err) {
-				return errors.NotFoundf("%s not found", sanitizePath(p, r.path))
+				return errors.NotFoundf("%s not found", p)
 			}
 
 			it, _ := loadRaw(root, getObjectKey(p))
@@ -135,7 +131,7 @@ func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) (ui
 		var raw []byte
 		raw, err = loadRaw(root, getObjectKey(itPath))
 		if err != nil {
-			return cnt, errors.NewNotFound(asPathErr(err, r.path), "not found")
+			return cnt, errors.NewNotFound(err, "not found")
 		}
 		if raw != nil {
 			if err := loaderFn(raw); err == nil {
