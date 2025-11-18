@@ -15,6 +15,7 @@ import (
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
+	"github.com/google/go-cmp/cmp"
 	"github.com/openshift/osin"
 )
 
@@ -307,31 +308,265 @@ func Test_UpdateClient(t *testing.T) {
 }
 
 func Test_LoadAccess(t *testing.T) {
-	t.Skipf("TODO")
+	type fields struct {
+		path   string
+		root   *os.Root
+		index  *bitmaps
+		cache  cache.CanStore
+		logger lw.Logger
+	}
+	type args struct {
+		code string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    *osin.AccessData
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			fields:  fields{},
+			args:    args{},
+			wantErr: errors.NotFoundf("Empty access code"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				path:   tt.fields.path,
+				root:   tt.fields.root,
+				index:  tt.fields.index,
+				cache:  tt.fields.cache,
+				logger: tt.fields.logger,
+			}
+			got, err := r.LoadAccess(tt.args.code)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("LoadAccess() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr != nil {
+				return
+			}
+			if !cmp.Equal(got, tt.wantErr) {
+				t.Errorf("LoadAccess() got %s", cmp.Diff(tt.want, got))
+			}
+		})
+	}
 }
 
 func Test_LoadRefresh(t *testing.T) {
-	t.Skipf("TODO")
+	type fields struct {
+		path   string
+		root   *os.Root
+		index  *bitmaps
+		cache  cache.CanStore
+		logger lw.Logger
+	}
+	type args struct {
+		code string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    *osin.AccessData
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			fields:  fields{},
+			args:    args{},
+			wantErr: errors.NotFoundf("Empty refresh code"),
+		},
+		{
+			name:    "empty",
+			fields:  fields{},
+			args:    args{"test"},
+			wantErr: errNotOpen,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				path:   tt.fields.path,
+				root:   tt.fields.root,
+				index:  tt.fields.index,
+				cache:  tt.fields.cache,
+				logger: tt.fields.logger,
+			}
+			got, err := r.LoadRefresh(tt.args.code)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("LoadRefresh() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr != nil {
+				return
+			}
+			if !cmp.Equal(got, tt.wantErr) {
+				t.Errorf("LoadRefresh() got %s", cmp.Diff(tt.want, got))
+			}
+		})
+	}
 }
 
 func Test_RemoveAccess(t *testing.T) {
-	t.Skipf("TODO")
+	type fields struct {
+		path   string
+		root   *os.Root
+		index  *bitmaps
+		cache  cache.CanStore
+		logger lw.Logger
+	}
+	type args struct {
+		code string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			fields:  fields{},
+			args:    args{},
+			wantErr: errNotOpen,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				path:   tt.fields.path,
+				root:   tt.fields.root,
+				index:  tt.fields.index,
+				cache:  tt.fields.cache,
+				logger: tt.fields.logger,
+			}
+			if err := r.RemoveAccess(tt.args.code); !errors.Is(err, tt.wantErr) {
+				t.Errorf("RemoveAccess() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func Test_RemoveAuthorize(t *testing.T) {
-	t.Skipf("TODO")
+	type fields struct {
+		path   string
+		root   *os.Root
+		index  *bitmaps
+		cache  cache.CanStore
+		logger lw.Logger
+	}
+	type args struct {
+		data *osin.AccessData
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			fields:  fields{},
+			args:    args{},
+			wantErr: errNotOpen,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				path:   tt.fields.path,
+				root:   tt.fields.root,
+				index:  tt.fields.index,
+				cache:  tt.fields.cache,
+				logger: tt.fields.logger,
+			}
+			if err := r.SaveAccess(tt.args.data); !errors.Is(err, tt.wantErr) {
+				t.Errorf("SaveAccess() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func Test_RemoveClient(t *testing.T) {
-	t.Skipf("TODO")
+	type fields struct {
+		path   string
+		root   *os.Root
+		index  *bitmaps
+		cache  cache.CanStore
+		logger lw.Logger
+	}
+	type args struct {
+		code string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			fields:  fields{},
+			args:    args{},
+			wantErr: errNotOpen,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				path:   tt.fields.path,
+				root:   tt.fields.root,
+				index:  tt.fields.index,
+				cache:  tt.fields.cache,
+				logger: tt.fields.logger,
+			}
+			if err := r.RemoveClient(tt.args.code); !errors.Is(err, tt.wantErr) {
+				t.Errorf("RemoveClient() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func Test_RemoveRefresh(t *testing.T) {
-	t.Skipf("TODO")
-}
-
-func Test_SaveAccess(t *testing.T) {
-	t.Skipf("TODO")
+	type fields struct {
+		path   string
+		root   *os.Root
+		index  *bitmaps
+		cache  cache.CanStore
+		logger lw.Logger
+	}
+	type args struct {
+		code string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			fields:  fields{},
+			args:    args{},
+			wantErr: errNotOpen,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				path:   tt.fields.path,
+				root:   tt.fields.root,
+				index:  tt.fields.index,
+				cache:  tt.fields.cache,
+				logger: tt.fields.logger,
+			}
+			if err := r.RemoveRefresh(tt.args.code); !errors.Is(err, tt.wantErr) {
+				t.Errorf("RemoveRefresh() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func Test_SaveAuthorize(t *testing.T) {
@@ -423,7 +658,7 @@ var (
 	}
 )
 
-func Test_repo_LoadAuthorize(t *testing.T) {
+func Test_LoadAuthorize(t *testing.T) {
 	tests := []struct {
 		name    string
 		path    string
@@ -484,6 +719,46 @@ func Test_repo_LoadAuthorize(t *testing.T) {
 			wantJson, _ := json.Marshal(tt.want)
 			if !bytes.Equal(gotJson, wantJson) {
 				t.Errorf("LoadAuthorize() got =\n%s\n====\n%s", gotJson, wantJson)
+			}
+		})
+	}
+}
+
+func Test_SaveAccess(t *testing.T) {
+	type fields struct {
+		path   string
+		root   *os.Root
+		index  *bitmaps
+		cache  cache.CanStore
+		logger lw.Logger
+	}
+	type args struct {
+		data *osin.AccessData
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			fields:  fields{},
+			args:    args{},
+			wantErr: errNotOpen,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &repo{
+				path:   tt.fields.path,
+				root:   tt.fields.root,
+				index:  tt.fields.index,
+				cache:  tt.fields.cache,
+				logger: tt.fields.logger,
+			}
+			if err := r.SaveAccess(tt.args.data); !errors.Is(err, tt.wantErr) {
+				t.Errorf("SaveAccess() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

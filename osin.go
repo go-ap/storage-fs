@@ -98,6 +98,9 @@ func isOauthStorageCollectionKey(p string) bool {
 }
 
 func (r *repo) openOauthRoot() (*os.Root, error) {
+	if r == nil || r.root == nil {
+		return nil, errNotOpen
+	}
 	if err := mkDirIfNotExists(r.root, folder); err != nil {
 		return nil, errors.Annotatef(err, "Invalid path %s", folder)
 	}
