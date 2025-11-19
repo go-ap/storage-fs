@@ -55,7 +55,7 @@ type initFn func(*repo) *repo
 
 func withMockItems(r *repo) *repo {
 	for _, it := range mockItems {
-		if _, err := r.Save(it); err != nil {
+		if _, err := save(r, it); err != nil {
 			r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("unable to save item: %s", it.GetLink())
 		}
 	}
