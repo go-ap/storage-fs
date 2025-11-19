@@ -13,7 +13,6 @@ import (
 
 	"git.sr.ht/~mariusor/lw"
 	vocab "github.com/go-ap/activitypub"
-	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
 	"github.com/google/go-cmp/cmp"
 	"github.com/openshift/osin"
@@ -76,18 +75,10 @@ func cleanup(tempFolder string) {
 	_ = os.RemoveAll(tempFolder)
 }
 
-func Test_Close(t *testing.T) {
+func Test_repo_Close(t *testing.T) {
 	s := repo{}
 	s.root, _ = os.OpenRoot(os.TempDir())
 	s.Close()
-}
-
-func Test_Open(t *testing.T) {
-	s := repo{path: t.TempDir()}
-	err := s.Open()
-	if err != nil {
-		t.Errorf("Expected nil when opening %T", s)
-	}
 }
 
 var loadClientTests = map[string]struct {
@@ -115,7 +106,7 @@ var loadClientTests = map[string]struct {
 	},
 }
 
-func Test_ListClients(t *testing.T) {
+func Test_repo_ListClients(t *testing.T) {
 	tempFolder := t.TempDir()
 	for name, tt := range loadClientTests {
 		s := initializeTemp(tempFolder)
@@ -147,7 +138,7 @@ func Test_ListClients(t *testing.T) {
 	}
 }
 
-func Test_Clone(t *testing.T) {
+func Test_repo_Clone(t *testing.T) {
 	s := new(repo)
 	ss := s.Clone()
 	s1, ok := ss.(*repo)
@@ -159,7 +150,7 @@ func Test_Clone(t *testing.T) {
 	}
 }
 
-func Test_GetClient(t *testing.T) {
+func Test_repo_GetClient(t *testing.T) {
 	tempFolder := t.TempDir()
 	defer cleanup(tempFolder)
 	s := initializeTemp(tempFolder)
@@ -213,7 +204,7 @@ var createClientTests = map[string]struct {
 	},
 }
 
-func Test_CreateClient(t *testing.T) {
+func Test_repo_CreateClient(t *testing.T) {
 	tempFolder := t.TempDir()
 	defer cleanup(tempFolder)
 	s := initializeTemp(tempFolder)
@@ -260,7 +251,7 @@ func Test_CreateClient(t *testing.T) {
 	}
 }
 
-func Test_UpdateClient(t *testing.T) {
+func Test_repo_UpdateClient(t *testing.T) {
 	tempFolder := t.TempDir()
 	defer cleanup(tempFolder)
 	s := initializeTemp(tempFolder)
@@ -307,95 +298,75 @@ func Test_UpdateClient(t *testing.T) {
 	}
 }
 
-func Test_LoadAccess(t *testing.T) {
-	type fields struct {
-		path   string
-		root   *os.Root
-		index  *bitmaps
-		cache  cache.CanStore
-		logger lw.Logger
-	}
-	type args struct {
-		code string
-	}
+func Test_repo_LoadAccess(t *testing.T) {
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    *osin.AccessData
-		wantErr error
+		name     string
+		fields   fields
+		setupFns []initFn
+		code     string
+		want     *osin.AccessData
+		wantErr  error
 	}{
 		{
 			name:    "empty",
 			fields:  fields{},
-			args:    args{},
 			wantErr: errors.NotFoundf("Empty access code"),
+		},
+		{
+			name:     "save access",
+			fields:   fields{path: t.TempDir()},
+			setupFns: []initFn{withClient, withAuthorization, withAccess},
+			code:     "access-666",
+			want:     mockAccess("access-666", defaultClient),
+			wantErr:  nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.fields.path,
-				root:   tt.fields.root,
-				index:  tt.fields.index,
-				cache:  tt.fields.cache,
-				logger: tt.fields.logger,
-			}
-			got, err := r.LoadAccess(tt.args.code)
-			if !errors.Is(err, tt.wantErr) {
+			r := mockRepo(t, tt.fields, tt.setupFns...)
+			defer r.Close()
+
+			got, err := r.LoadAccess(tt.code)
+			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
 				t.Errorf("LoadAccess() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantErr != nil {
 				return
 			}
-			if !cmp.Equal(got, tt.wantErr) {
+			if !cmp.Equal(got, tt.want) {
 				t.Errorf("LoadAccess() got %s", cmp.Diff(tt.want, got))
 			}
 		})
 	}
 }
 
-func Test_LoadRefresh(t *testing.T) {
-	type fields struct {
-		path   string
-		root   *os.Root
-		index  *bitmaps
-		cache  cache.CanStore
-		logger lw.Logger
-	}
-	type args struct {
-		code string
-	}
+func Test_repo_LoadRefresh(t *testing.T) {
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    *osin.AccessData
-		wantErr error
+		name     string
+		fields   fields
+		setupFns []initFn
+		code     string
+		want     *osin.AccessData
+		wantErr  error
 	}{
 		{
 			name:    "empty",
 			fields:  fields{},
-			args:    args{},
 			wantErr: errors.NotFoundf("Empty refresh code"),
 		},
 		{
 			name:    "empty",
 			fields:  fields{},
-			args:    args{"test"},
+			code:    "test",
 			wantErr: errNotOpen,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.fields.path,
-				root:   tt.fields.root,
-				index:  tt.fields.index,
-				cache:  tt.fields.cache,
-				logger: tt.fields.logger,
-			}
-			got, err := r.LoadRefresh(tt.args.code)
+			r := mockRepo(t, tt.fields, tt.setupFns...)
+			defer r.Close()
+
+			got, err := r.LoadRefresh(tt.code)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("LoadRefresh() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -409,173 +380,156 @@ func Test_LoadRefresh(t *testing.T) {
 	}
 }
 
-func Test_RemoveAccess(t *testing.T) {
-	type fields struct {
-		path   string
-		root   *os.Root
-		index  *bitmaps
-		cache  cache.CanStore
-		logger lw.Logger
-	}
-	type args struct {
-		code string
-	}
+func Test_repo_RemoveAccess(t *testing.T) {
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr error
+		name     string
+		fields   fields
+		setupFns []initFn
+		code     string
+		wantErr  error
 	}{
 		{
 			name:    "empty",
 			fields:  fields{},
-			args:    args{},
 			wantErr: errNotOpen,
+		},
+		{
+			name:    "empty",
+			fields:  fields{},
+			code:    "test",
+			wantErr: errNotOpen,
+		},
+		{
+			name:     "remove access",
+			fields:   fields{path: t.TempDir()},
+			setupFns: []initFn{withClient, withAuthorization, withAccess},
+			code:     "access-666",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.fields.path,
-				root:   tt.fields.root,
-				index:  tt.fields.index,
-				cache:  tt.fields.cache,
-				logger: tt.fields.logger,
-			}
-			if err := r.RemoveAccess(tt.args.code); !errors.Is(err, tt.wantErr) {
+			r := mockRepo(t, tt.fields, tt.setupFns...)
+			defer r.Close()
+
+			if err := r.RemoveAccess(tt.code); !errors.Is(err, tt.wantErr) {
 				t.Errorf("RemoveAccess() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func Test_RemoveAuthorize(t *testing.T) {
-	type fields struct {
-		path   string
-		root   *os.Root
-		index  *bitmaps
-		cache  cache.CanStore
-		logger lw.Logger
-	}
-	type args struct {
-		data *osin.AccessData
-	}
+func Test_repo_RemoveAuthorize(t *testing.T) {
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr error
+		name     string
+		fields   fields
+		setupFns []initFn
+		code     string
+		wantErr  error
 	}{
 		{
 			name:    "empty",
 			fields:  fields{},
-			args:    args{},
 			wantErr: errNotOpen,
+		},
+		{
+			name:     "remove auth",
+			fields:   fields{path: t.TempDir()},
+			setupFns: []initFn{withClient, withAuthorization},
+			code:     "test-auth",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.fields.path,
-				root:   tt.fields.root,
-				index:  tt.fields.index,
-				cache:  tt.fields.cache,
-				logger: tt.fields.logger,
-			}
-			if err := r.SaveAccess(tt.args.data); !errors.Is(err, tt.wantErr) {
-				t.Errorf("SaveAccess() error = %v, wantErr %v", err, tt.wantErr)
+			r := mockRepo(t, tt.fields, tt.setupFns...)
+			if err := r.RemoveAuthorize(tt.code); !errors.Is(err, tt.wantErr) {
+				t.Errorf("RemoveAuthorize() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func Test_RemoveClient(t *testing.T) {
-	type fields struct {
-		path   string
-		root   *os.Root
-		index  *bitmaps
-		cache  cache.CanStore
-		logger lw.Logger
-	}
-	type args struct {
-		code string
-	}
+func Test_repo_RemoveClient(t *testing.T) {
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr error
+		name     string
+		fields   fields
+		setupFns []initFn
+		code     string
+		wantErr  error
 	}{
 		{
 			name:    "empty",
 			fields:  fields{},
-			args:    args{},
 			wantErr: errNotOpen,
+		},
+		{
+			name:    "empty",
+			fields:  fields{},
+			code:    "test",
+			wantErr: errNotOpen,
+		},
+		{
+			name:     "remove client",
+			fields:   fields{path: t.TempDir()},
+			setupFns: []initFn{withClient},
+			code:     "test-client",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.fields.path,
-				root:   tt.fields.root,
-				index:  tt.fields.index,
-				cache:  tt.fields.cache,
-				logger: tt.fields.logger,
-			}
-			if err := r.RemoveClient(tt.args.code); !errors.Is(err, tt.wantErr) {
+			r := mockRepo(t, tt.fields, tt.setupFns...)
+			if err := r.RemoveClient(tt.code); !errors.Is(err, tt.wantErr) {
 				t.Errorf("RemoveClient() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func Test_RemoveRefresh(t *testing.T) {
-	type fields struct {
-		path   string
-		root   *os.Root
-		index  *bitmaps
-		cache  cache.CanStore
-		logger lw.Logger
-	}
-	type args struct {
-		code string
-	}
+func Test_repo_RemoveRefresh(t *testing.T) {
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr error
+		name     string
+		fields   fields
+		setupFns []initFn
+		code     string
+		wantErr  error
 	}{
 		{
 			name:    "empty",
 			fields:  fields{},
-			args:    args{},
 			wantErr: errNotOpen,
+		},
+		{
+			name:    "empty",
+			fields:  fields{},
+			code:    "test",
+			wantErr: errNotOpen,
+		},
+		{
+			name:     "mock auth",
+			fields:   fields{path: t.TempDir()},
+			setupFns: []initFn{withAccess},
+			code:     "access-666",
+			wantErr:  nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.fields.path,
-				root:   tt.fields.root,
-				index:  tt.fields.index,
-				cache:  tt.fields.cache,
-				logger: tt.fields.logger,
-			}
-			if err := r.RemoveRefresh(tt.args.code); !errors.Is(err, tt.wantErr) {
+			r := mockRepo(t, tt.fields)
+			defer r.Close()
+
+			if err := r.RemoveRefresh(tt.code); !errors.Is(err, tt.wantErr) {
 				t.Errorf("RemoveRefresh() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func Test_SaveAuthorize(t *testing.T) {
+func Test_repo_SaveAuthorize(t *testing.T) {
 	tests := []struct {
-		name    string
-		path    string
-		setup   func(*repo) error
-		auth    *osin.AuthorizeData
-		wantErr error
+		name     string
+		path     string
+		setupFns []initFn
+		auth     *osin.AuthorizeData
+		wantErr  error
 	}{
 		{
 			name:    "empty",
@@ -583,32 +537,18 @@ func Test_SaveAuthorize(t *testing.T) {
 			wantErr: errors.Errorf("unable to save nil authorization data"),
 		},
 		{
-			name: "save mock auth",
-			path: t.TempDir(),
-			setup: func(r *repo) error {
-				return r.CreateClient(defaultClient)
-			},
-			auth:    mockAuth("test-code123", defaultClient),
-			wantErr: nil,
+			name:     "save mock auth",
+			path:     t.TempDir(),
+			setupFns: []initFn{withClient},
+			auth:     mockAuth("test-code123", defaultClient),
+			wantErr:  nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.path,
-				logger: logger,
-				cache:  cache.New(true),
-			}
-			if err := r.Open(); err != nil {
-				t.Errorf("Open before SaveAuthorize() error = %v", err)
-				return
-			}
-			if tt.setup != nil {
-				if err := tt.setup(r); err != nil {
-					t.Errorf("Setup before SaveAuthorize() error = %v", err)
-					return
-				}
-			}
+			r := mockRepo(t, fields{path: tt.path}, tt.setupFns...)
+			defer r.Close()
+
 			err := r.SaveAuthorize(tt.auth)
 			if tt.wantErr != nil {
 				if err != nil {
@@ -656,54 +596,68 @@ var (
 			UserData:  vocab.IRI("https://example.com/jdoe"),
 		}
 	}
+	mockAccess = func(code string, cl osin.Client) *osin.AccessData {
+		return &osin.AccessData{
+			Client:        cl,
+			AuthorizeData: mockAuth("test-code", cl),
+			AccessToken:   code,
+			RefreshToken:  "refresh",
+			ExpiresIn:     10,
+			Scope:         "none",
+			RedirectUri:   "http://localhost",
+			CreatedAt:     time.Now().Add(10 * time.Minute).Round(10 * time.Minute),
+			UserData:      vocab.IRI("https://example.com/jdoe"),
+		}
+	}
 )
 
-func Test_LoadAuthorize(t *testing.T) {
+func withClient(r *repo) *repo {
+	if err := r.CreateClient(defaultClient); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("failed to create client")
+	}
+	return r
+}
+
+func withAuthorization(r *repo) *repo {
+	if err := r.SaveAuthorize(mockAuth("test-code", defaultClient)); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("failed to create authorization data")
+	}
+	return r
+}
+
+func withAccess(r *repo) *repo {
+	if err := r.SaveAccess(mockAccess("access-666", defaultClient)); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("failed to create authorization data")
+	}
+	return r
+}
+
+func Test_repo_LoadAuthorize(t *testing.T) {
 	tests := []struct {
-		name    string
-		path    string
-		setup   func(*repo) error
-		code    string
-		want    *osin.AuthorizeData
-		wantErr error
+		name     string
+		path     string
+		setupFns []initFn
+		code     string
+		want     *osin.AuthorizeData
+		wantErr  error
 	}{
 		{
 			name: "empty",
 			path: t.TempDir(),
 		},
 		{
-			name: "authorized",
-			path: t.TempDir(),
-			code: "test-code",
-			setup: func(r *repo) error {
-				if err := r.CreateClient(defaultClient); err != nil {
-					return err
-				}
-				if err := r.SaveAuthorize(mockAuth("test-code", defaultClient)); err != nil {
-					return err
-				}
-				return nil
-			},
-			want: mockAuth("test-code", defaultClient),
+			name:     "authorized",
+			path:     t.TempDir(),
+			code:     "test-code",
+			setupFns: []initFn{withClient, withAuthorization},
+			want:     mockAuth("test-code", defaultClient),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.path,
-				logger: logger,
-				cache:  cache.New(true),
-			}
-			if err := r.Open(); err != nil {
-				t.Errorf("Open before LoadAuthorize() error = %v", err)
-				return
-			}
-			if tt.setup != nil {
-				if err := tt.setup(r); err != nil {
-					t.Errorf("Setup before LoadAuthorize() error = %v", err)
-					return
-				}
-			}
+			r := mockRepo(t, fields{path: tt.path}, tt.setupFns...)
+			defer r.Close()
+
 			got, err := r.LoadAuthorize(tt.code)
 			if tt.wantErr != nil {
 				if err != nil {
@@ -724,40 +678,31 @@ func Test_LoadAuthorize(t *testing.T) {
 	}
 }
 
-func Test_SaveAccess(t *testing.T) {
-	type fields struct {
-		path   string
-		root   *os.Root
-		index  *bitmaps
-		cache  cache.CanStore
-		logger lw.Logger
-	}
-	type args struct {
-		data *osin.AccessData
-	}
+func Test_repo_SaveAccess(t *testing.T) {
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr error
+		name     string
+		fields   fields
+		setupFns []initFn
+		data     *osin.AccessData
+		wantErr  error
 	}{
 		{
 			name:    "empty",
 			fields:  fields{},
-			args:    args{},
 			wantErr: errNotOpen,
+		},
+		{
+			name:     "save access",
+			fields:   fields{path: t.TempDir()},
+			setupFns: []initFn{withClient, withAuthorization},
+			data:     mockAccess("access-666", defaultClient),
+			wantErr:  nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.fields.path,
-				root:   tt.fields.root,
-				index:  tt.fields.index,
-				cache:  tt.fields.cache,
-				logger: tt.fields.logger,
-			}
-			if err := r.SaveAccess(tt.args.data); !errors.Is(err, tt.wantErr) {
+			r := mockRepo(t, tt.fields, tt.setupFns...)
+			if err := r.SaveAccess(tt.data); !errors.Is(err, tt.wantErr) {
 				t.Errorf("SaveAccess() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

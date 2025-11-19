@@ -149,7 +149,7 @@ func getIndexKey(typ index.Type) string {
 const _refName = ".ref.gob"
 
 func (r *repo) saveIndex() error {
-	if r.index == nil {
+	if r.root == nil || r.index == nil {
 		return nil
 	}
 

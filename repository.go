@@ -118,13 +118,14 @@ func (r *repo) Create(col vocab.CollectionInterface) (vocab.CollectionInterface,
 
 // Save
 func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
-	var err error
-
-	op := "saved"
-	if it, err = save(r, it); err == nil {
-		r.logger.WithContext(lw.Ctx{"type": it.GetType(), "IRI": it.GetLink()}).Debugf("%s", op)
+	if r == nil || r.root == nil {
+		return nil, errNotOpen
 	}
-	return it, err
+	if vocab.IsNil(it) {
+		return nil, errors.Newf("Unable to save nil element")
+	}
+
+	return save(r, it)
 }
 
 // RemoveFrom removes the items from the colIRI collection.
@@ -427,56 +428,11 @@ func createCollectionInPath(r *repo, it, owner vocab.Item) (vocab.Item, error) {
 	return it.GetLink(), asPathErr(mkDirIfNotExists(r.root, itPath))
 }
 
-func deleteCollectionFromPath(r repo, it vocab.Item) error {
-	if vocab.IsNil(it) {
-		return nil
-	}
-	itPath := iriPath(it.GetLink())
-	if fi, err := r.root.Stat(itPath); err != nil {
-		if !os.IsNotExist(err) {
-			return errors.NewNotFound(asPathErr(err), "not found")
-		}
-	} else if fi.IsDir() {
-		return r.root.Remove(itPath)
-	}
-	r.removeFromCache(it.GetLink())
-	return nil
-}
-
 func (r *repo) removeFromCache(iri vocab.IRI) {
 	if r.cache == nil {
 		return
 	}
 	r.cache.Delete(iri.GetLink())
-}
-
-// deleteCollections
-func deleteCollections(r repo, it vocab.Item) error {
-	if vocab.ActorTypes.Contains(it.GetType()) {
-		return vocab.OnActor(it, func(p *vocab.Actor) error {
-			// NOTE(marius): deleting the hidden collections for Blocked and Ignored items
-			_ = deleteCollectionFromPath(r, filters.BlockedType.Of(p))
-			_ = deleteCollectionFromPath(r, filters.IgnoredType.Of(p))
-
-			var err error
-			err = deleteCollectionFromPath(r, vocab.Inbox.IRI(p))
-			err = deleteCollectionFromPath(r, vocab.Outbox.IRI(p))
-			err = deleteCollectionFromPath(r, vocab.Followers.IRI(p))
-			err = deleteCollectionFromPath(r, vocab.Following.IRI(p))
-			err = deleteCollectionFromPath(r, vocab.Liked.IRI(p))
-			return err
-		})
-	}
-	if vocab.ObjectTypes.Contains(it.GetType()) {
-		return vocab.OnObject(it, func(o *vocab.Object) error {
-			var err error
-			err = deleteCollectionFromPath(r, vocab.Replies.IRI(o))
-			err = deleteCollectionFromPath(r, vocab.Likes.IRI(o))
-			err = deleteCollectionFromPath(r, vocab.Shares.IRI(o))
-			return err
-		})
-	}
-	return nil
 }
 
 func getAbsStoragePath(p string) (string, error) {

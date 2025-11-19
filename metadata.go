@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"math/rand"
 
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
@@ -18,13 +17,19 @@ import (
 
 // PasswordSet
 func (r *repo) PasswordSet(iri vocab.IRI, pw []byte) error {
-	pw, err := bcrypt.GenerateFromPassword(pw, -1)
-	if err != nil {
+	if r == nil || r.root == nil {
+		return errNotOpen
+	}
+	if pw == nil {
+		return errors.Newf("could not generate hash for nil pw")
+	}
+	m := Metadata{}
+	_ = r.LoadMetadata(iri, &m)
+	var err error
+	if pw, err = bcrypt.GenerateFromPassword(pw, -1); err != nil {
 		return errors.Annotatef(err, "could not generate pw hash")
 	}
-	m := Metadata{
-		Pw: pw,
-	}
+	m.Pw = pw
 	return r.SaveMetadata(iri, m)
 }
 
@@ -63,6 +68,9 @@ func (r *repo) LoadMetadata(iri vocab.IRI, m any) error {
 func (r *repo) SaveMetadata(iri vocab.IRI, m any) error {
 	if r == nil || r.root == nil {
 		return errNotOpen
+	}
+	if m == nil {
+		return errors.Newf("Could not save nil metadata")
 	}
 	entryBytes, err := encodeFn(m)
 	if err != nil {
@@ -104,17 +112,17 @@ type Metadata struct {
 
 // SaveKey saves a private key for an actor found by its IRI
 func (r *repo) SaveKey(iri vocab.IRI, key crypto.PrivateKey) (*vocab.PublicKey, error) {
+	if r == nil || r.root == nil {
+		return nil, errNotOpen
+	}
 	m := new(Metadata)
 	if err := r.LoadMetadata(iri, m); err != nil && !errors.IsNotFound(err) {
 		return nil, err
 	}
-	if m.PrivateKey != nil {
-		r.logger.Debugf("actor %s already has a private key", iri)
-	}
 
 	prvEnc, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
-		r.logger.Errorf("unable to x509.MarshalPKCS8PrivateKey() the private key %T for %s", key, iri)
+		r.logger.Errorf("unable to marshal the private key %T for %s", key, iri)
 		return nil, err
 	}
 
@@ -156,59 +164,4 @@ func (r *repo) SaveKey(iri vocab.IRI, key crypto.PrivateKey) (*vocab.PublicKey, 
 		Owner:        iri,
 		PublicKeyPem: string(pubEncoded),
 	}, nil
-}
-
-// GenKey creates and saves a private key for an actor found by its IRI
-func (r *repo) GenKey(iri vocab.IRI) error {
-	ob, err := r.loadOneFromIRI(iri)
-	if err != nil {
-		return err
-	}
-	if ob.GetType() != vocab.PersonType {
-		return errors.Newf("trying to generate keys for invalid ActivityPub object type: %s", ob.GetType())
-	}
-
-	m := new(Metadata)
-	if err := r.LoadMetadata(iri, m); err != nil && !errors.IsNotFound(err) {
-		return err
-	}
-	if m.PrivateKey != nil {
-		return nil
-	}
-	// TODO(marius): this needs a way to choose between ED25519 and RSA keys
-	pubB, prvB := generateECKeyPair()
-	m.PrivateKey = pem.EncodeToMemory(&prvB)
-
-	if err = r.SaveMetadata(iri, m); err != nil {
-		return err
-	}
-	_ = vocab.OnActor(ob, func(act *vocab.Actor) error {
-		act.PublicKey = vocab.PublicKey{
-			ID:           vocab.IRI(fmt.Sprintf("%s#main", iri)),
-			Owner:        iri,
-			PublicKeyPem: string(pem.EncodeToMemory(&pubB)),
-		}
-		return nil
-	})
-	return nil
-}
-
-func generateECKeyPair() (pem.Block, pem.Block) {
-	// TODO(marius): make this actually produce proper keys, using a valid seed
-	keyPub, keyPrv, _ := ed25519.GenerateKey(rand.New(rand.NewSource(6667)))
-
-	var p, r pem.Block
-	if pubEnc, err := x509.MarshalPKIXPublicKey(keyPub); err == nil {
-		p = pem.Block{
-			Type:  "PUBLIC KEY",
-			Bytes: pubEnc,
-		}
-	}
-	if prvEnc, err := x509.MarshalPKCS8PrivateKey(keyPrv); err == nil {
-		r = pem.Block{
-			Type:  "PRIVATE KEY",
-			Bytes: prvEnc,
-		}
-	}
-	return p, r
 }

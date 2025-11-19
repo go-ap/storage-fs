@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -18,11 +19,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/sys/unix"
 )
-
-type fields struct {
-	path  string
-	cache cache.CanStore
-}
 
 func Test_New(t *testing.T) {
 	testFolder := t.TempDir()
@@ -363,7 +359,7 @@ func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
 	}
 }
 
-func Test_repo_createCollection(t *testing.T) {
+func Test_createCollection(t *testing.T) {
 	tests := []struct {
 		name     string
 		owner    vocab.Item
@@ -382,12 +378,7 @@ func Test_repo_createCollection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				r := &repo{
-					path:   t.TempDir(),
-					cache:  cache.New(false),
-					logger: logger,
-				}
-				_ = r.Open()
+				r := mockRepo(t, fields{path: t.TempDir()})
 				defer r.Close()
 
 				col, err := createCollectionInPath(r, tt.iri, tt.owner)
@@ -422,6 +413,76 @@ func defaultCol(iri vocab.IRI) vocab.CollectionInterface {
 	}
 }
 
+func withOrderedCollection(iri vocab.IRI) func(r *repo) *repo {
+	return func(r *repo) *repo {
+		if _, err := saveCollection(r, defaultCol(iri)); err != nil {
+			r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": iri}).Errorf("unable to save collection")
+		}
+		return r
+	}
+}
+
+func withCollection(iri vocab.IRI) func(r *repo) *repo {
+	col := &vocab.Collection{
+		ID:        iri,
+		Type:      vocab.CollectionType,
+		CC:        vocab.ItemCollection{vocab.PublicNS},
+		Published: time.Now().Round(time.Second).UTC(),
+	}
+	return func(r *repo) *repo {
+		if _, err := saveCollection(r, col); err != nil {
+			r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": iri}).Errorf("unable to save collection")
+		}
+		return r
+	}
+}
+
+func withOrderedCollectionHavingItems(r *repo) *repo {
+	colIRI := vocab.IRI("https://example.com/followers")
+	col := vocab.OrderedCollection{
+		ID:        colIRI,
+		Type:      vocab.OrderedCollectionType,
+		CC:        vocab.ItemCollection{vocab.PublicNS},
+		Published: time.Now().UTC(),
+	}
+	if _, err := saveCollection(r, &col); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": colIRI}).Errorf("unable to save collection")
+	}
+	obIRI := vocab.IRI("https://example.com")
+	ob, err := save(r, vocab.Object{ID: obIRI})
+	if err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": obIRI}).Errorf("unable to save item")
+	}
+	if err := r.AddTo(col.ID, ob); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "col": colIRI, "ob": obIRI}).Errorf("unable to add item to collection")
+	}
+	return r
+}
+
+func withCollectionHavingItems(r *repo) *repo {
+	colIRI := vocab.IRI("https://example.com/followers")
+	col := vocab.Collection{
+		ID:        colIRI,
+		Type:      vocab.CollectionType,
+		CC:        vocab.ItemCollection{vocab.PublicNS},
+		Published: time.Now().UTC(),
+	}
+	if _, err := saveCollection(r, &col); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": colIRI}).Errorf("unable to save collection")
+	}
+	obIRI := vocab.IRI("https://example.com")
+	ob, err := save(r, vocab.Object{ID: obIRI})
+	if err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": obIRI}).Errorf("unable to save item")
+	}
+	if err := r.AddTo(col.ID, ob); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "col": colIRI, "ob": obIRI}).Errorf("unable to add item to collection")
+	}
+	return r
+}
+
+var withJdoeInbox = withOrderedCollection("https://example.com/~jdoe/inbox")
+
 func Test_repo_RemoveFrom(t *testing.T) {
 	type args struct {
 		colIRI vocab.IRI
@@ -429,11 +490,11 @@ func Test_repo_RemoveFrom(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		path    string
-		setup   func(*repo) error
-		args    args
-		wantErr error
+		name     string
+		path     string
+		setupFns []initFn
+		args     args
+		wantErr  error
 	}{
 		{
 			name:    "empty",
@@ -451,12 +512,9 @@ func Test_repo_RemoveFrom(t *testing.T) {
 			wantErr: errPathNotFound("example.com/followers"),
 		},
 		{
-			name: "item doesn't exist in collection",
-			path: t.TempDir(),
-			setup: func(r *repo) error {
-				_, err := saveCollection(r, defaultCol("https://example.com/followers"))
-				return err
-			},
+			name:     "item doesn't exist in ordered collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOrderedCollection("https://example.com/followers")},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -464,24 +522,29 @@ func Test_repo_RemoveFrom(t *testing.T) {
 			wantErr: nil, // if the item doesn't exist, we don't error out, unsure if that makes sense
 		},
 		{
-			name: "item exists in collection",
-			path: t.TempDir(),
-			setup: func(r *repo) error {
-				col := vocab.OrderedCollection{
-					ID:        "https://example.com/followers",
-					Type:      vocab.OrderedCollectionType,
-					CC:        vocab.ItemCollection{vocab.PublicNS},
-					Published: time.Now().UTC(),
-				}
-				if _, err := saveCollection(r, &col); err != nil {
-					return err
-				}
-				ob, err := save(r, vocab.Object{ID: "https://example.com"})
-				if err != nil {
-					return err
-				}
-				return r.AddTo(col.ID, ob)
+			name:     "item exists in ordered collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOrderedCollectionHavingItems},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
 			},
+			wantErr: nil,
+		},
+		{
+			name:     "item doesn't exist in collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withCollection("https://example.com/followers")},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: nil, // if the item doesn't exist, we don't error out, unsure if that makes sense
+		},
+		{
+			name:     "item exists in collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withCollectionHavingItems},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -491,24 +554,12 @@ func Test_repo_RemoveFrom(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.path,
-				logger: logger,
-				cache:  cache.New(true),
-			}
-			if err := r.Open(); err != nil {
-				t.Errorf("Open before RemoveFrom() error = %v", err)
-				return
-			}
-			if tt.setup != nil {
-				if err := tt.setup(r); err != nil {
-					t.Errorf("Setup before RemoveFrom() error = %v", err)
-					return
-				}
-			}
+			r := mockRepo(t, fields{path: tt.path}, tt.setupFns...)
+			defer r.Close()
+
 			err := r.RemoveFrom(tt.args.colIRI, tt.args.it)
-			if (err != nil) && tt.wantErr.Error() != err.Error() {
-				t.Errorf("RemoveFrom() error = %v, wantErr %v", err, tt.wantErr)
+			if !cmp.Equal(tt.wantErr, err, EquateWeakErrors) {
+				t.Errorf("RemoveFrom() error = %s", cmp.Diff(tt.wantErr, err))
 				return
 			}
 			if tt.wantErr != nil {
@@ -662,6 +713,58 @@ func Test_repo_AddTo(t *testing.T) {
 			}
 			if !vocab.ItemsEqual(ob, tt.args.it) {
 				t.Errorf("Loaded item after AddTo(), is not equal %#v with the one provided %#v", ob, tt.args.it)
+			}
+		})
+	}
+}
+
+func Test_repo_Save(t *testing.T) {
+	type test struct {
+		name     string
+		fields   fields
+		setupFns []initFn
+		it       vocab.Item
+		want     vocab.Item
+		wantErr  error
+	}
+	tests := []test{
+		{
+			name:    "empty",
+			fields:  fields{},
+			wantErr: errNotOpen,
+		},
+		{
+			name:    "empty item can't be saved",
+			fields:  fields{path: t.TempDir()},
+			wantErr: errors.Newf("Unable to save nil element"),
+		},
+		{
+			name:   "itemcollection",
+			fields: fields{path: t.TempDir()},
+			it:     mockItems,
+			want:   mockItems,
+		},
+	}
+	for i, mockIt := range mockItems {
+		tests = append(tests, test{
+			name:   fmt.Sprintf("save %d %T to repo", i, mockIt),
+			fields: fields{path: t.TempDir()},
+			it:     mockIt,
+			want:   mockIt,
+		})
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := mockRepo(t, tt.fields, tt.setupFns...)
+			defer r.Close()
+
+			got, err := r.Save(tt.it)
+			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
+				t.Errorf("Save() error = %s", cmp.Diff(tt.wantErr, err))
+				return
+			}
+			if !cmp.Equal(got, tt.want) {
+				t.Errorf("Save() got = %s", cmp.Diff(tt.want, got))
 			}
 		})
 	}

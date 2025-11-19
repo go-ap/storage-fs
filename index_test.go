@@ -106,17 +106,9 @@ func Test_getIndexKey(t *testing.T) {
 	}
 }
 
-func openRepo(t *testing.T, path string) *repo {
-	rr := &repo{path: path, index: newBitmap()}
-	if err := rr.Open(); err != nil {
-		t.Fatalf("Unable to open  mock repo: %s", err)
-	}
-	return rr
-}
-
-func saveIndexForRepo(t *testing.T, r *repo) *repo {
+func saveIndexForRepo(r *repo) *repo {
 	if err := r.saveIndex(); err != nil {
-		t.Fatalf("Unable to save indexes for mock repo %s: %s", r.path, err)
+		r.logger.WithContext(lw.Ctx{"path": r.path, "err": err.Error()}).Errorf("unable to save indexes for mock repo")
 	}
 	return r
 }
@@ -382,10 +374,11 @@ func Test_repo_addToIndex(t *testing.T) {
 		path string
 	}
 	type test struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr error
+		name     string
+		fields   fields
+		setupFns []initFn
+		args     args
+		wantErr  error
 	}
 	tests := []test{
 		{
@@ -463,50 +456,7 @@ func Test_repo_addToIndex(t *testing.T) {
 	}
 }
 
-func Test_repo_collectionBitmapOp(t *testing.T) {
-	type fields struct {
-		path   string
-		root   *os.Root
-		index  *bitmaps
-		cache  cache.CanStore
-		logger lw.Logger
-	}
-	type args struct {
-		fn    func(*roaring64.Bitmap, uint64)
-		items []vocab.Item
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   func(col vocab.CollectionInterface) error
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.fields.path,
-				root:   tt.fields.root,
-				index:  tt.fields.index,
-				cache:  tt.fields.cache,
-				logger: tt.fields.logger,
-			}
-			if got := r.collectionBitmapOp(tt.args.fn, tt.args.items...); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("collectionBitmapOp() = %p, want %p", got, tt.want)
-			}
-		})
-	}
-}
-
 func Test_repo_collectionIndexStoragePath(t *testing.T) {
-	type fields struct {
-		path   string
-		root   *os.Root
-		index  *bitmaps
-		cache  cache.CanStore
-		logger lw.Logger
-	}
 	type args struct {
 		col vocab.IRI
 	}
@@ -516,17 +466,18 @@ func Test_repo_collectionIndexStoragePath(t *testing.T) {
 		args   args
 		want   string
 	}{
-		// TODO: Add test cases.
+		{
+			name:   "empty",
+			fields: fields{},
+			args:   args{},
+			want:   ".index",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.fields.path,
-				root:   tt.fields.root,
-				index:  tt.fields.index,
-				cache:  tt.fields.cache,
-				logger: tt.fields.logger,
-			}
+			r := mockRepo(t, tt.fields)
+			defer r.Close()
+
 			if got := r.collectionIndexStoragePath(tt.args.col); got != tt.want {
 				t.Errorf("collectionIndexStoragePath() = %v, want %v", got, tt.want)
 			}
@@ -536,13 +487,6 @@ func Test_repo_collectionIndexStoragePath(t *testing.T) {
 
 func Test_repo_removeFromIndex(t *testing.T) {
 	mockRoot := openRoot(t, t.TempDir())
-	type fields struct {
-		path   string
-		root   *os.Root
-		index  *bitmaps
-		cache  cache.CanStore
-		logger lw.Logger
-	}
 	type args struct {
 		it   vocab.Item
 		path string
@@ -616,11 +560,10 @@ func Test_repo_removeFromIndex(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &repo{
-				path:   tt.fields.path,
-				root:   tt.fields.root,
-				index:  tt.fields.index,
-				cache:  tt.fields.cache,
-				logger: tt.fields.logger,
+				path:  tt.fields.path,
+				root:  tt.fields.root,
+				index: tt.fields.index,
+				cache: tt.fields.cache,
 			}
 			if err := r.removeFromIndex(tt.args.it, tt.args.path); !errors.Is(err, tt.wantErr) {
 				t.Errorf("removeFromIndex() error = %v, wantErr %v", err, tt.wantErr)
@@ -631,13 +574,6 @@ func Test_repo_removeFromIndex(t *testing.T) {
 
 func Test_repo_searchIndex(t *testing.T) {
 	mockRoot := openRoot(t, t.TempDir())
-	type fields struct {
-		path   string
-		root   *os.Root
-		index  *bitmaps
-		cache  cache.CanStore
-		logger lw.Logger
-	}
 	type args struct {
 		col vocab.Item
 		ff  []filters.Check
@@ -698,13 +634,7 @@ func Test_repo_searchIndex(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.fields.path,
-				root:   tt.fields.root,
-				index:  tt.fields.index,
-				cache:  tt.fields.cache,
-				logger: tt.fields.logger,
-			}
+			r := mockRepo(t, tt.fields)
 			for _, mockIt := range mockItems {
 				_ = r.addToIndex(mockIt, iriPath(mockIt.GetLink()))
 			}
