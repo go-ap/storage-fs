@@ -5,14 +5,14 @@ go 1.25
 require (
 	git.sr.ht/~mariusor/lw v0.0.0-20250325163623-1639f3fb0e0d
 	github.com/RoaringBitmap/roaring v1.9.4
-	github.com/go-ap/activitypub v0.0.0-20251119152743-e014e45d622c
-	github.com/go-ap/cache v0.0.0-20251119155220-290a227710a9
+	github.com/go-ap/activitypub v0.0.0-20251119200117-f535d00430a0
+	github.com/go-ap/cache v0.0.0-20251119200207-b59e201c6b31
 	github.com/go-ap/errors v0.0.0-20250905102357-4480b47a00c4
-	github.com/go-ap/filters v0.0.0-20251119155300-b00543b21bd7
+	github.com/go-ap/filters v0.0.0-20251119200236-228f88cb2de7
 	github.com/go-ap/storage-conformance-suite v0.0.0-20251107175308-1f25da14ce88
 	github.com/google/go-cmp v0.7.0
 	github.com/openshift/osin v1.0.2-0.20220317075346-0f4d38c6e53f
-	golang.org/x/crypto v0.44.0
+	golang.org/x/crypto v0.45.0
 	golang.org/x/sys v0.38.0
 )
 
