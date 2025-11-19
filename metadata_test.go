@@ -53,7 +53,7 @@ func mockRepo(t *testing.T, f fields, initFns ...initFn) *repo {
 
 type initFn func(*repo) *repo
 
-func withItems(r *repo) *repo {
+func withMockItems(r *repo) *repo {
 	for _, it := range mockItems {
 		if _, err := r.Save(it); err != nil {
 			r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("unable to save item: %s", it.GetLink())
@@ -118,7 +118,7 @@ func Test_repo_LoadKey(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			wantErr:  errors.NotFoundf("not found"),
 		},
 		{
@@ -126,7 +126,7 @@ func Test_repo_LoadKey(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			iri:      "https://example.com/~jdoe",
 			wantErr:  errors.NotFoundf("not found"),
 		},
@@ -135,7 +135,7 @@ func Test_repo_LoadKey(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems, withMetadataJDoe},
+			setupFns: []initFn{withMockItems, withMetadataJDoe},
 			iri:      "https://example.com/~jdoe",
 			want:     pk,
 		},
@@ -181,7 +181,7 @@ func Test_repo_LoadMetadata(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			wantErr:  errors.NotFoundf("not found"),
 		},
 		{
@@ -189,7 +189,7 @@ func Test_repo_LoadMetadata(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			args: args{
 				iri: "https://example.com/~jdoe",
 				m:   Metadata{},
@@ -201,7 +201,7 @@ func Test_repo_LoadMetadata(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems, withMetadataJDoe},
+			setupFns: []initFn{withMockItems, withMetadataJDoe},
 			args: args{
 				iri: "https://example.com/~jdoe",
 				m:   &Metadata{},
@@ -254,7 +254,7 @@ func Test_repo_PasswordCheck(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			wantErr:  errors.NotFoundf("not found"),
 		},
 		{
@@ -262,7 +262,7 @@ func Test_repo_PasswordCheck(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			args: args{
 				iri: "https://example.com/~jdoe",
 			},
@@ -273,7 +273,7 @@ func Test_repo_PasswordCheck(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems, withMetadataJDoe},
+			setupFns: []initFn{withMockItems, withMetadataJDoe},
 			args: args{
 				iri: "https://example.com/~jdoe",
 				pw:  defaultPw,
@@ -284,7 +284,7 @@ func Test_repo_PasswordCheck(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems, withMetadataJDoe},
+			setupFns: []initFn{withMockItems, withMetadataJDoe},
 			args: args{
 				iri: "https://example.com/~jdoe",
 				pw:  []byte("asd"),
@@ -342,7 +342,7 @@ func Test_repo_PasswordSet(t *testing.T) {
 		{
 			name:     "empty args",
 			fields:   fields{path: t.TempDir()},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			wantErr:  errors.Newf("could not generate hash for nil pw"),
 		},
 		{
@@ -350,7 +350,7 @@ func Test_repo_PasswordSet(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			args: args{
 				iri: "https://example.com/~jdoe",
 			},
@@ -361,7 +361,7 @@ func Test_repo_PasswordSet(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems, withMetadataJDoe},
+			setupFns: []initFn{withMockItems, withMetadataJDoe},
 			args: args{
 				iri: "https://example.com/~jdoe",
 				pw:  []byte("asd"),
@@ -403,7 +403,7 @@ func Test_repo_SaveKey(t *testing.T) {
 		{
 			name:     "empty args",
 			fields:   fields{path: t.TempDir()},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			wantErr:  fmt.Errorf("x509: unknown key type while marshaling PKCS#8: %T", nil),
 		},
 		{
@@ -411,7 +411,7 @@ func Test_repo_SaveKey(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems, withMetadataJDoe},
+			setupFns: []initFn{withMockItems, withMetadataJDoe},
 			args: args{
 				iri: "https://example.com/~jdoe",
 				key: pk,
@@ -457,7 +457,7 @@ func Test_repo_SaveMetadata(t *testing.T) {
 		{
 			name:     "empty args",
 			fields:   fields{path: t.TempDir()},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			wantErr:  errors.Newf("Could not save nil metadata"),
 		},
 		{
@@ -465,7 +465,7 @@ func Test_repo_SaveMetadata(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			args: args{
 				iri: "https://example.com/~jdoe",
 				m:   []byte("asd"),
@@ -476,7 +476,7 @@ func Test_repo_SaveMetadata(t *testing.T) {
 			fields: fields{
 				path: t.TempDir(),
 			},
-			setupFns: []initFn{withItems},
+			setupFns: []initFn{withMockItems},
 			args: args{
 				iri: "https://example.com/~jdoe",
 				m: Metadata{

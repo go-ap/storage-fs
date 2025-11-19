@@ -13,7 +13,6 @@ import (
 
 	"git.sr.ht/~mariusor/lw"
 	vocab "github.com/go-ap/activitypub"
-	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
 	"github.com/go-ap/filters"
 	"github.com/google/go-cmp/cmp"
@@ -483,6 +482,17 @@ func withCollectionHavingItems(r *repo) *repo {
 
 var withJdoeInbox = withOrderedCollection("https://example.com/~jdoe/inbox")
 
+func withItems(items ...vocab.Item) initFn {
+	return func(r *repo) *repo {
+		for _, it := range items {
+			if _, err := save(r, it); err != nil {
+				r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("unable to save item: %s", it.GetLink())
+			}
+		}
+		return r
+	}
+}
+
 func Test_repo_RemoveFrom(t *testing.T) {
 	type args struct {
 		colIRI vocab.IRI
@@ -606,11 +616,12 @@ func Test_repo_AddTo(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		path    string
-		setup   func(*repo) error
-		args    args
-		wantErr error
+		name     string
+		path     string
+		setupFns []initFn
+		setup    func(*repo) error
+		args     args
+		wantErr  error
 	}{
 		{
 			name:    "empty",
@@ -628,12 +639,9 @@ func Test_repo_AddTo(t *testing.T) {
 			wantErr: errPathNotFound("example.com/followers"),
 		},
 		{
-			name: "item doesn't exist",
-			path: t.TempDir(),
-			setup: func(r *repo) error {
-				_, err := saveCollection(r, defaultCol("https://example.com/followers"))
-				return err
-			},
+			name:     "item doesn't exist in collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withCollection("https://example.com/followers")},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -641,43 +649,61 @@ func Test_repo_AddTo(t *testing.T) {
 			wantErr: errors.NotFoundf("invalid item to add to collection"),
 		},
 		{
-			name: "item exists in collection",
-			path: t.TempDir(),
-			setup: func(r *repo) error {
-				col := defaultCol("https://example.com/followers")
-				if _, err := saveCollection(r, col); err != nil {
-					return err
-				}
-				ob, err := save(r, vocab.Object{ID: "https://example.com"})
-				if err != nil {
-					return err
-				}
-				return r.AddTo(col.GetLink(), ob)
+			name:     "item doesn't exist in ordered collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOrderedCollection("https://example.com/followers")},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
 			},
+			wantErr: errors.NotFoundf("invalid item to add to collection"),
+		},
+		{
+			name:     "item exists in ordered collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOrderedCollectionHavingItems},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
 			},
 			wantErr: nil,
 		},
+		{
+			name:     "item exists in collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withCollectionHavingItems},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: nil,
+		},
+		{
+			name:     "item to non-existent hidden collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
+			args: args{
+				colIRI: "https://example.com/~jdoe/blocked",
+				it:     vocab.IRI("https://example.com/example"),
+			},
+			wantErr: nil,
+		},
+		{
+			name:     "item to hidden collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withCollection("https://example.com/~jdoe/blocked"), withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
+			args: args{
+				colIRI: "https://example.com/~jdoe/blocked",
+				it:     vocab.IRI("https://example.com/example"),
+			},
+			wantErr: nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{
-				path:   tt.path,
-				logger: logger,
-				cache:  cache.New(true),
-			}
-			if err := r.Open(); err != nil {
-				t.Errorf("Open before AddTo() error = %v", err)
-				return
-			}
-			if tt.setup != nil {
-				if err := tt.setup(r); err != nil {
-					t.Errorf("Setup before AddTo() error = %v", err)
-					return
-				}
-			}
+			r := mockRepo(t, fields{path: tt.path}, tt.setupFns...)
+			defer r.Close()
+
 			err := r.AddTo(tt.args.colIRI, tt.args.it)
 			if tt.wantErr != nil {
 				if err != nil {
