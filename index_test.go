@@ -274,7 +274,7 @@ func openRoot(t *testing.T, path string) *os.Root {
 var mockItems = vocab.ItemCollection{
 	vocab.IRI("https://example.com/plain-iri"),
 	&vocab.Object{ID: "https://example.com/1", Type: vocab.NoteType},
-	&vocab.Link{Href: "https://example.com/1", Type: vocab.LinkType},
+	&vocab.Link{ID: "https://example.com/1", Href: "https://example.com/1", Type: vocab.LinkType},
 	&vocab.Actor{ID: "https://example.com/~jdoe", Type: vocab.PersonType},
 	&vocab.Activity{ID: "https://example.com/~jdoe/1", Type: vocab.UpdateType},
 	&vocab.Object{ID: "https://example.com/~jdoe/tag-none", Type: vocab.UpdateType},

@@ -765,7 +765,7 @@ func Test_repo_Save(t *testing.T) {
 			wantErr: errors.Newf("Unable to save nil element"),
 		},
 		{
-			name:   "itemcollection",
+			name:   "save item collection",
 			fields: fields{path: t.TempDir()},
 			it:     mockItems,
 			want:   mockItems,
@@ -791,6 +791,51 @@ func Test_repo_Save(t *testing.T) {
 			}
 			if !cmp.Equal(got, tt.want) {
 				t.Errorf("Save() got = %s", cmp.Diff(tt.want, got))
+			}
+		})
+	}
+}
+
+func Test_repo_Delete(t *testing.T) {
+	type test struct {
+		name     string
+		fields   fields
+		setupFns []initFn
+		it       vocab.Item
+		wantErr  error
+	}
+	tests := []test{
+		{
+			name:    "empty",
+			fields:  fields{},
+			wantErr: errNotOpen,
+		},
+		{
+			name:   "empty item won't return an error",
+			fields: fields{path: t.TempDir()},
+		},
+		{
+			name:     "delete item collection",
+			fields:   fields{path: t.TempDir()},
+			setupFns: []initFn{withItems(mockItems)},
+			it:       mockItems,
+		},
+	}
+	for i, mockIt := range mockItems {
+		tests = append(tests, test{
+			name:     fmt.Sprintf("delete %d %T from repo", i, mockIt),
+			fields:   fields{path: t.TempDir()},
+			setupFns: []initFn{withMockItems},
+			it:       mockIt,
+		})
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := mockRepo(t, tt.fields, tt.setupFns...)
+			defer r.Close()
+
+			if err := r.Delete(tt.it); !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
+				t.Errorf("Delete() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

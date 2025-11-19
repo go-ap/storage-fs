@@ -98,6 +98,9 @@ func (r *repo) Close() {
 
 // Load
 func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
+	if r == nil || r.root == nil {
+		return nil, errNotOpen
+	}
 	it, err := r.loadFromIRI(i, f...)
 	if err != nil {
 		return nil, err
@@ -265,8 +268,6 @@ func (r *repo) AddTo(colIRI vocab.IRI, items ...vocab.Item) error {
 
 	linkPath := iriPath(colIRI)
 	for _, it := range items {
-		itOriginalPath := filepath.Join(iriPath(it.GetLink()))
-		fullLink := path.Join(linkPath, url.PathEscape(iriPath(it.GetLink())))
 		if vocab.IsIRI(it) {
 			it, err = r.loadOneFromIRI(it.GetLink())
 			if err != nil {
@@ -284,25 +285,21 @@ func (r *repo) AddTo(colIRI vocab.IRI, items ...vocab.Item) error {
 				return nil
 			}
 
+			fullLink := path.Join(linkPath, url.PathEscape(iriPath(it.GetLink())))
 			if fi, _ := r.root.Stat(fullLink); fi != nil {
 				if isSymLink(fi) {
 					return nil
 				}
 			}
 
-			if itOriginalPath, err = filepath.Rel(fullLink, itOriginalPath); err != nil {
+			itOriginalPath := iriPath(it.GetLink())
+			relativePath, err := filepath.Rel(linkPath, itOriginalPath)
+			if err != nil {
 				return err
-			}
-			// TODO(marius): using filepath.Rel returns one extra parent for some reason, I need to look into why
-			itOriginalPath = strings.Replace(itOriginalPath, "../", "", 1)
-			if itOriginalPath == "." {
-				// NOTE(marius): if the relative path resolves to the current folder, we don't try to symlink
-				r.logger.Debugf("symlinking path resolved to the current directory: %s", itOriginalPath)
-				return nil
 			}
 			// NOTE(marius): we can't use hard links as we're linking to folders :(
 			// This would have been tremendously easier (as in, not having to compute paths) with hard-links.
-			if err = r.root.Symlink(itOriginalPath, fullLink); err != nil {
+			if err = r.root.Symlink(relativePath, fullLink); err != nil {
 				return err
 			}
 			return nil
@@ -341,20 +338,24 @@ func (r *repo) AddTo(colIRI vocab.IRI, items ...vocab.Item) error {
 
 // Delete
 func (r *repo) Delete(it vocab.Item) error {
+	if r == nil || r.root == nil {
+		return errNotOpen
+	}
+	if vocab.IsNil(it) {
+		return nil
+	}
 	return r.delete(it)
 }
 
 func (r *repo) delete(it vocab.Item) error {
-	if it.IsCollection() {
-		return vocab.OnCollectionIntf(it, func(c vocab.CollectionInterface) error {
-			var err error
-			for _, it := range c.Collection() {
-				if err = deleteItem(r, it); err != nil {
+	if vocab.IsItemCollection(it) {
+		if col, ok := it.(vocab.ItemCollection); ok {
+			for _, it := range col {
+				if err := deleteItem(r, it); err != nil {
 					r.logger.Debugf("Unable to remove item %s", it.GetLink())
 				}
 			}
-			return nil
-		})
+		}
 	}
 	return deleteItem(r, it.GetLink())
 }
@@ -452,6 +453,9 @@ func getAbsStoragePath(p string) (string, error) {
 }
 
 func deleteItem(r *repo, it vocab.Item) error {
+	if it.GetLink() == "" {
+		return nil
+	}
 	itemPath := iriPath(it.GetLink())
 
 	if err := r.root.RemoveAll(itemPath); err != nil && !os.IsNotExist(err) {
