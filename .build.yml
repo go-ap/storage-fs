@@ -3,6 +3,8 @@ packages:
   - go
 sources:
   - https://github.com/go-ap/storage-fs
+secrets:
+  - 4f3f5b78-ec70-4a96-a7e4-ea522d87da52
 environment:
   GO111MODULE: 'on'
 tasks:
@@ -14,3 +16,4 @@ tasks:
   - coverage: |
       set -a +x
       cd storage-fs && make coverage
+      go run github.com/mattn/goveralls@latest -flagname unit-tests -coverprofile=storage-fs.coverprofile -service=sourcehut -repotokenfile ~/.coveralls.tok
