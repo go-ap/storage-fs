@@ -9,10 +9,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
-	"time"
 
 	"git.sr.ht/~mariusor/lw"
-	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
 	"github.com/google/go-cmp/cmp"
 	"github.com/openshift/osin"

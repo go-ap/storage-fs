@@ -373,7 +373,6 @@ func isHiddenCollectionKey(p string) bool {
 }
 
 // createCollections
-// FIXME(marius): this seems to be quite slow... INVESTIGATE!!!
 func createCollections(r *repo, it vocab.Item) error {
 	if vocab.IsNil(it) || !it.IsObject() {
 		return nil
