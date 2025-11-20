@@ -263,14 +263,6 @@ func Test_onCollectionBitmap(t *testing.T) {
 	}
 }
 
-func openRoot(t *testing.T, path string) *os.Root {
-	rr, err := os.OpenRoot(path)
-	if err != nil {
-		t.Fatalf("Unable to open mock root: %s", err)
-	}
-	return rr
-}
-
 var mockItems = vocab.ItemCollection{
 	vocab.IRI("https://example.com/plain-iri"),
 	&vocab.Object{ID: "https://example.com/1", Type: vocab.NoteType},

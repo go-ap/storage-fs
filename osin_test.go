@@ -315,7 +315,7 @@ func Test_repo_LoadAccess(t *testing.T) {
 		{
 			name:     "save access",
 			fields:   fields{path: t.TempDir()},
-			setupFns: []initFn{withClient, withAuthorization, withAccess},
+			setupFns: []initFn{withOpenRoot, withClient, withAuthorization, withAccess},
 			code:     "access-666",
 			want:     mockAccess("access-666", defaultClient),
 			wantErr:  nil,
@@ -402,7 +402,7 @@ func Test_repo_RemoveAccess(t *testing.T) {
 		{
 			name:     "remove access",
 			fields:   fields{path: t.TempDir()},
-			setupFns: []initFn{withClient, withAuthorization, withAccess},
+			setupFns: []initFn{withOpenRoot, withClient, withAuthorization, withAccess},
 			code:     "access-666",
 		},
 	}
@@ -434,7 +434,7 @@ func Test_repo_RemoveAuthorize(t *testing.T) {
 		{
 			name:     "remove auth",
 			fields:   fields{path: t.TempDir()},
-			setupFns: []initFn{withClient, withAuthorization},
+			setupFns: []initFn{withOpenRoot, withClient, withAuthorization},
 			code:     "test-auth",
 		},
 	}
@@ -470,7 +470,7 @@ func Test_repo_RemoveClient(t *testing.T) {
 		{
 			name:     "remove client",
 			fields:   fields{path: t.TempDir()},
-			setupFns: []initFn{withClient},
+			setupFns: []initFn{withOpenRoot, withClient},
 			code:     "test-client",
 		},
 	}
@@ -493,27 +493,34 @@ func Test_repo_RemoveRefresh(t *testing.T) {
 		wantErr  error
 	}{
 		{
-			name:    "empty",
+			name:    "not open",
 			fields:  fields{},
 			wantErr: errNotOpen,
 		},
 		{
-			name:    "empty",
+			name:    "empty not open",
 			fields:  fields{},
 			code:    "test",
 			wantErr: errNotOpen,
 		},
 		{
-			name:     "mock auth",
+			name:     "empty",
+			fields:   fields{},
+			setupFns: []initFn{withOpenRoot},
+			code:     "test",
+			wantErr:  errNotOpen,
+		},
+		{
+			name:     "mock access",
 			fields:   fields{path: t.TempDir()},
-			setupFns: []initFn{withAccess},
+			setupFns: []initFn{withOpenRoot, withAccess},
 			code:     "access-666",
 			wantErr:  nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := mockRepo(t, tt.fields)
+			r := mockRepo(t, tt.fields, tt.setupFns...)
 			defer r.Close()
 
 			if err := r.RemoveRefresh(tt.code); !errors.Is(err, tt.wantErr) {
@@ -539,7 +546,7 @@ func Test_repo_SaveAuthorize(t *testing.T) {
 		{
 			name:     "save mock auth",
 			path:     t.TempDir(),
-			setupFns: []initFn{withClient},
+			setupFns: []initFn{withOpenRoot, withClient},
 			auth:     mockAuth("test-code123", defaultClient),
 			wantErr:  nil,
 		},
@@ -580,58 +587,6 @@ func Test_repo_SaveAuthorize(t *testing.T) {
 	}
 }
 
-var (
-	defaultClient = &osin.DefaultClient{
-		Id:          "test-client",
-		Secret:      "asd",
-		RedirectUri: "https://example.com",
-		UserData:    nil,
-	}
-	mockAuth = func(code string, cl osin.Client) *osin.AuthorizeData {
-		return &osin.AuthorizeData{
-			Client:    cl,
-			Code:      code,
-			ExpiresIn: 10,
-			CreatedAt: time.Now().Add(10 * time.Minute).Round(10 * time.Minute),
-			UserData:  vocab.IRI("https://example.com/jdoe"),
-		}
-	}
-	mockAccess = func(code string, cl osin.Client) *osin.AccessData {
-		return &osin.AccessData{
-			Client:        cl,
-			AuthorizeData: mockAuth("test-code", cl),
-			AccessToken:   code,
-			RefreshToken:  "refresh",
-			ExpiresIn:     10,
-			Scope:         "none",
-			RedirectUri:   "http://localhost",
-			CreatedAt:     time.Now().Add(10 * time.Minute).Round(10 * time.Minute),
-			UserData:      vocab.IRI("https://example.com/jdoe"),
-		}
-	}
-)
-
-func withClient(r *repo) *repo {
-	if err := r.CreateClient(defaultClient); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("failed to create client")
-	}
-	return r
-}
-
-func withAuthorization(r *repo) *repo {
-	if err := r.SaveAuthorize(mockAuth("test-code", defaultClient)); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("failed to create authorization data")
-	}
-	return r
-}
-
-func withAccess(r *repo) *repo {
-	if err := r.SaveAccess(mockAccess("access-666", defaultClient)); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("failed to create authorization data")
-	}
-	return r
-}
-
 func Test_repo_LoadAuthorize(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -649,7 +604,7 @@ func Test_repo_LoadAuthorize(t *testing.T) {
 			name:     "authorized",
 			path:     t.TempDir(),
 			code:     "test-code",
-			setupFns: []initFn{withClient, withAuthorization},
+			setupFns: []initFn{withOpenRoot, withClient, withAuthorization},
 			want:     mockAuth("test-code", defaultClient),
 		},
 	}
@@ -694,7 +649,7 @@ func Test_repo_SaveAccess(t *testing.T) {
 		{
 			name:     "save access",
 			fields:   fields{path: t.TempDir()},
-			setupFns: []initFn{withClient, withAuthorization},
+			setupFns: []initFn{withOpenRoot, withClient, withAuthorization},
 			data:     mockAccess("access-666", defaultClient),
 			wantErr:  nil,
 		},

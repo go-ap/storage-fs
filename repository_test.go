@@ -377,7 +377,7 @@ func Test_createCollection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				r := mockRepo(t, fields{path: t.TempDir()})
+				r := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot)
 				defer r.Close()
 
 				col, err := createCollectionInPath(r, tt.iri, tt.owner)
@@ -507,14 +507,22 @@ func Test_repo_RemoveFrom(t *testing.T) {
 		wantErr  error
 	}{
 		{
-			name:    "empty",
+			name:    "not open",
 			path:    t.TempDir(),
 			args:    args{},
-			wantErr: errors.NotFoundf("not found"), // empty iri can't be found, unsure if that makes sense
+			wantErr: errNotOpen,
 		},
 		{
-			name: "collection doesn't exist",
-			path: t.TempDir(),
+			name:     "empty",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot},
+			args:     args{},
+			wantErr:  errors.NotFoundf("not found"), // empty iri can't be found, unsure if that makes sense
+		},
+		{
+			name:     "collection doesn't exist",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -524,7 +532,7 @@ func Test_repo_RemoveFrom(t *testing.T) {
 		{
 			name:     "item doesn't exist in ordered collection",
 			path:     t.TempDir(),
-			setupFns: []initFn{withOrderedCollection("https://example.com/followers")},
+			setupFns: []initFn{withOpenRoot, withOrderedCollection("https://example.com/followers")},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -534,7 +542,7 @@ func Test_repo_RemoveFrom(t *testing.T) {
 		{
 			name:     "item exists in ordered collection",
 			path:     t.TempDir(),
-			setupFns: []initFn{withOrderedCollectionHavingItems},
+			setupFns: []initFn{withOpenRoot, withOrderedCollectionHavingItems},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -544,7 +552,7 @@ func Test_repo_RemoveFrom(t *testing.T) {
 		{
 			name:     "item doesn't exist in collection",
 			path:     t.TempDir(),
-			setupFns: []initFn{withCollection("https://example.com/followers")},
+			setupFns: []initFn{withOpenRoot, withCollection("https://example.com/followers")},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -554,7 +562,7 @@ func Test_repo_RemoveFrom(t *testing.T) {
 		{
 			name:     "item exists in collection",
 			path:     t.TempDir(),
-			setupFns: []initFn{withCollectionHavingItems},
+			setupFns: []initFn{withOpenRoot, withCollectionHavingItems},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -624,14 +632,22 @@ func Test_repo_AddTo(t *testing.T) {
 		wantErr  error
 	}{
 		{
-			name:    "empty",
+			name:    "not open",
 			path:    t.TempDir(),
 			args:    args{},
-			wantErr: errors.NotFoundf("not found"), // empty iri can't be found, unsure if that makes sense
+			wantErr: errNotOpen,
 		},
 		{
-			name: "collection doesn't exist",
-			path: t.TempDir(),
+			name:     "empty",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot},
+			args:     args{},
+			wantErr:  errors.NotFoundf("not found"), // empty iri can't be found, unsure if that makes sense
+		},
+		{
+			name:     "collection doesn't exist",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -641,7 +657,7 @@ func Test_repo_AddTo(t *testing.T) {
 		{
 			name:     "item doesn't exist in collection",
 			path:     t.TempDir(),
-			setupFns: []initFn{withCollection("https://example.com/followers")},
+			setupFns: []initFn{withOpenRoot, withCollection("https://example.com/followers")},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -651,7 +667,7 @@ func Test_repo_AddTo(t *testing.T) {
 		{
 			name:     "item doesn't exist in ordered collection",
 			path:     t.TempDir(),
-			setupFns: []initFn{withOrderedCollection("https://example.com/followers")},
+			setupFns: []initFn{withOpenRoot, withOrderedCollection("https://example.com/followers")},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -661,7 +677,7 @@ func Test_repo_AddTo(t *testing.T) {
 		{
 			name:     "item exists in ordered collection",
 			path:     t.TempDir(),
-			setupFns: []initFn{withOrderedCollectionHavingItems},
+			setupFns: []initFn{withOpenRoot, withOrderedCollectionHavingItems},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -671,7 +687,7 @@ func Test_repo_AddTo(t *testing.T) {
 		{
 			name:     "item exists in collection",
 			path:     t.TempDir(),
-			setupFns: []initFn{withCollectionHavingItems},
+			setupFns: []initFn{withOpenRoot, withCollectionHavingItems},
 			args: args{
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
@@ -681,7 +697,7 @@ func Test_repo_AddTo(t *testing.T) {
 		{
 			name:     "item to non-existent hidden collection",
 			path:     t.TempDir(),
-			setupFns: []initFn{withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
+			setupFns: []initFn{withOpenRoot, withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
 			args: args{
 				colIRI: "https://example.com/~jdoe/blocked",
 				it:     vocab.IRI("https://example.com/example"),
@@ -691,7 +707,7 @@ func Test_repo_AddTo(t *testing.T) {
 		{
 			name:     "item to hidden collection",
 			path:     t.TempDir(),
-			setupFns: []initFn{withCollection("https://example.com/~jdoe/blocked"), withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
+			setupFns: []initFn{withOpenRoot, withCollection("https://example.com/~jdoe/blocked"), withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
 			args: args{
 				colIRI: "https://example.com/~jdoe/blocked",
 				it:     vocab.IRI("https://example.com/example"),
@@ -760,23 +776,26 @@ func Test_repo_Save(t *testing.T) {
 			wantErr: errNotOpen,
 		},
 		{
-			name:    "empty item can't be saved",
-			fields:  fields{path: t.TempDir()},
-			wantErr: errors.Newf("Unable to save nil element"),
+			name:     "empty item can't be saved",
+			fields:   fields{path: t.TempDir()},
+			setupFns: []initFn{withOpenRoot},
+			wantErr:  errors.Newf("Unable to save nil element"),
 		},
 		{
-			name:   "save item collection",
-			fields: fields{path: t.TempDir()},
-			it:     mockItems,
-			want:   mockItems,
+			name:     "save item collection",
+			setupFns: []initFn{withOpenRoot},
+			fields:   fields{path: t.TempDir()},
+			it:       mockItems,
+			want:     mockItems,
 		},
 	}
 	for i, mockIt := range mockItems {
 		tests = append(tests, test{
-			name:   fmt.Sprintf("save %d %T to repo", i, mockIt),
-			fields: fields{path: t.TempDir()},
-			it:     mockIt,
-			want:   mockIt,
+			name:     fmt.Sprintf("save %d %T to repo", i, mockIt),
+			setupFns: []initFn{withOpenRoot},
+			fields:   fields{path: t.TempDir()},
+			it:       mockIt,
+			want:     mockIt,
 		})
 	}
 	for _, tt := range tests {
@@ -811,13 +830,14 @@ func Test_repo_Delete(t *testing.T) {
 			wantErr: errNotOpen,
 		},
 		{
-			name:   "empty item won't return an error",
-			fields: fields{path: t.TempDir()},
+			name:     "empty item won't return an error",
+			setupFns: []initFn{withOpenRoot},
+			fields:   fields{path: t.TempDir()},
 		},
 		{
 			name:     "delete item collection",
 			fields:   fields{path: t.TempDir()},
-			setupFns: []initFn{withItems(mockItems)},
+			setupFns: []initFn{withOpenRoot, withItems(mockItems)},
 			it:       mockItems,
 		},
 	}
@@ -825,7 +845,7 @@ func Test_repo_Delete(t *testing.T) {
 		tests = append(tests, test{
 			name:     fmt.Sprintf("delete %d %T from repo", i, mockIt),
 			fields:   fields{path: t.TempDir()},
-			setupFns: []initFn{withMockItems},
+			setupFns: []initFn{withOpenRoot, withMockItems},
 			it:       mockIt,
 		})
 	}
