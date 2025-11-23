@@ -1,4 +1,6 @@
 {
     "id":"https://example.com",
-    "type":"Application"
+    "type":"Application",
+    "name":"example.com",
+    "inbox":"https://example.com/inbox"
 }

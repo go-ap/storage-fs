@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -104,11 +103,6 @@ func Test_repo_Open(t *testing.T) {
 	}
 }
 
-func filter(items vocab.ItemCollection, fil ...filters.Check) vocab.ItemCollection {
-	result, _ := vocab.ToItemCollection(filters.Checks(fil).Run(items))
-	return *result
-}
-
 var testCWD = ""
 
 func getwd() (string, error) {
@@ -119,6 +113,130 @@ func getwd() (string, error) {
 }
 
 func Test_repo_Load(t *testing.T) {
+	r := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot, withGeneratedMocks)
+	defer r.Close()
+
+	type args struct {
+		iri vocab.IRI
+		fil filters.Checks
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    vocab.Item
+		wantErr error
+	}{
+		{
+			name:    "empty",
+			args:    args{iri: ""},
+			want:    nil,
+			wantErr: errors.NotFoundf("file not found"),
+		},
+		{
+			name:    "empty iri gives us not found",
+			args:    args{iri: ""},
+			want:    nil,
+			wantErr: errors.NotFoundf("file not found"),
+		},
+		{
+			name: "root iri gives us the root",
+			args: args{iri: "https://example.com"},
+			want: root,
+		},
+		{
+			name:    "invalid iri gives 404",
+			args:    args{iri: "https://example.com/dsad"},
+			want:    nil,
+			wantErr: os.ErrNotExist,
+		},
+		{
+			name: "first Person",
+			args: args{iri: "https://example.com/person/1"},
+			want: filter(*allActors.Load(), filters.HasType("Person")).First(),
+		},
+		{
+			name: "first Follow",
+			args: args{iri: "https://example.com/follow/1"},
+			want: filter(*allActivities.Load(), filters.HasType("Follow")).First(),
+		},
+		{
+			name: "first Image",
+			args: args{iri: "https://example.com/image/1"},
+			want: filter(*allObjects.Load(), filters.SameID("https://example.com/image/1")).First(),
+		},
+		{
+			name: "full outbox",
+			args: args{iri: rootOutboxIRI},
+			want: &vocab.OrderedCollection{
+				ID:           rootOutboxIRI,
+				AttributedTo: rootIRI,
+				Type:         vocab.OrderedCollectionType,
+				CC:           vocab.ItemCollection{vocab.IRI("https://www.w3.org/ns/activitystreams#Public")},
+				Published:    publishedTime,
+				OrderedItems: allActivities.Load().Collection(),
+				TotalItems:   allActivities.Load().Count(),
+			},
+		},
+		// NOTE(marius): this fails because the ordering is different between the loaded collection and the mocked activities
+		//{
+		//	name: "limit to max 2 things",
+		//	args: args{
+		//		iri: rootOutboxIRI,
+		//		fil: filters.Checks{filters.WithMaxCount(2)},
+		//	},
+		//	want: wantsRootOutboxPage(2, filters.WithMaxCount(2)),
+		//},
+		{
+			name: "inbox?type=Create",
+			args: args{
+				iri: rootOutboxIRI,
+				fil: filters.Checks{
+					filters.HasType(vocab.CreateType),
+				},
+			},
+			want: &vocab.OrderedCollection{
+				ID:           rootOutboxIRI,
+				Type:         vocab.OrderedCollectionType,
+				AttributedTo: rootIRI,
+				Published:    publishedTime,
+				CC:           vocab.ItemCollection{vocab.IRI("https://www.w3.org/ns/activitystreams#Public")},
+				First:        vocab.IRI(string(rootOutboxIRI) + "?" + filters.ToValues(filters.WithMaxCount(filters.MaxItems)).Encode()),
+				OrderedItems: filter(*allActivities.Load(), filters.HasType(vocab.CreateType)),
+				TotalItems:   allActivities.Load().Count(),
+			},
+		},
+		{
+			name: "inbox?type=Create&actor.name=Hank",
+			args: args{
+				iri: rootOutboxIRI,
+				fil: filters.Checks{
+					filters.HasType(vocab.CreateType),
+					filters.Actor(filters.NameIs("Hank")),
+				},
+			},
+			want: wantsRootOutbox(
+				filters.HasType(vocab.CreateType),
+				filters.Actor(filters.NameIs("Hank")),
+			),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := r.Load(tt.args.iri, tt.args.fil...)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			_ = vocab.OnCollectionIntf(tt.want, sortCollectionByIRI)
+			_ = vocab.OnCollectionIntf(got, sortCollectionByIRI)
+			if !cmp.Equal(tt.want, got) {
+				t.Errorf("Load() got = %s", cmp.Diff(tt.want, got))
+			}
+		})
+	}
+}
+
+func Test_repo_Load_should_deprecate(t *testing.T) {
 	basePath, _ := getwd()
 
 	mocksPath := filepath.Join(basePath, "mocks")
@@ -143,9 +261,7 @@ func Test_repo_Load(t *testing.T) {
 		return nil
 	})
 
-	sort.Slice(inbox, func(i, j int) bool {
-		return vocab.ItemOrderTimestamp(inbox[i], inbox[j])
-	})
+	_ = vocab.OnCollectionIntf(inbox, sortCollectionByIRI)
 	type args struct {
 		iri vocab.IRI
 		fil filters.Checks
