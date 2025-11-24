@@ -105,7 +105,7 @@ func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	return it, nil
+	return filters.Checks(f).Run(it), nil
 }
 
 // Create

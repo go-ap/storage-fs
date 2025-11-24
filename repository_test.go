@@ -167,18 +167,10 @@ func Test_repo_Load(t *testing.T) {
 		{
 			name: "full outbox",
 			args: args{iri: rootOutboxIRI},
-			want: &vocab.OrderedCollection{
-				ID:           rootOutboxIRI,
-				AttributedTo: rootIRI,
-				Type:         vocab.OrderedCollectionType,
-				CC:           vocab.ItemCollection{vocab.IRI("https://www.w3.org/ns/activitystreams#Public")},
-				Published:    publishedTime,
-				OrderedItems: allActivities.Load().Collection(),
-				TotalItems:   allActivities.Load().Count(),
-			},
+			want: wantsRootOutbox(),
 		},
-		// NOTE(marius): this fails because the ordering is different between the loaded collection and the mocked activities
 		//{
+		//	// NOTE(marius): this doesn't work probably due to the implicit ordering when loading from disk
 		//	name: "limit to max 2 things",
 		//	args: args{
 		//		iri: rootOutboxIRI,
@@ -194,16 +186,7 @@ func Test_repo_Load(t *testing.T) {
 					filters.HasType(vocab.CreateType),
 				},
 			},
-			want: &vocab.OrderedCollection{
-				ID:           rootOutboxIRI,
-				Type:         vocab.OrderedCollectionType,
-				AttributedTo: rootIRI,
-				Published:    publishedTime,
-				CC:           vocab.ItemCollection{vocab.IRI("https://www.w3.org/ns/activitystreams#Public")},
-				First:        vocab.IRI(string(rootOutboxIRI) + "?" + filters.ToValues(filters.WithMaxCount(filters.MaxItems)).Encode()),
-				OrderedItems: filter(*allActivities.Load(), filters.HasType(vocab.CreateType)),
-				TotalItems:   allActivities.Load().Count(),
-			},
+			want: wantsRootOutbox(filters.HasType(vocab.CreateType)),
 		},
 		{
 			name: "inbox?type=Create&actor.name=Hank",
@@ -227,10 +210,8 @@ func Test_repo_Load(t *testing.T) {
 				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			_ = vocab.OnCollectionIntf(tt.want, sortCollectionByIRI)
-			_ = vocab.OnCollectionIntf(got, sortCollectionByIRI)
-			if !cmp.Equal(tt.want, got) {
-				t.Errorf("Load() got = %s", cmp.Diff(tt.want, got))
+			if !cmp.Equal(tt.want, got, EquateItemCollections) {
+				t.Errorf("Load() got = %s", cmp.Diff(tt.want, got, EquateItemCollections))
 			}
 		})
 	}
@@ -261,7 +242,6 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 		return nil
 	})
 
-	_ = vocab.OnCollectionIntf(inbox, sortCollectionByIRI)
 	type args struct {
 		iri vocab.IRI
 		fil filters.Checks
@@ -468,9 +448,9 @@ func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
 		ID:           id,
 		AttributedTo: vocab.IRI("https://example.com"),
 		Type:         vocab.OrderedCollectionType,
+		First:        vocab.IRI("https://example.com/replies?" + filters.ToValues(filters.WithMaxCount(filters.MaxItems)).Encode()),
 		Published:    time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 		CC:           vocab.ItemCollection{vocab.PublicNS},
-		OrderedItems: make(vocab.ItemCollection, 0),
 	}
 }
 
