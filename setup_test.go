@@ -188,7 +188,7 @@ func mockAccess(code string, cl osin.Client) *osin.AccessData {
 		Client:        cl,
 		AuthorizeData: mockAuth("test-code", cl),
 		AccessToken:   code,
-		RefreshToken:  "refresh",
+		RefreshToken:  "refresh-666",
 		ExpiresIn:     10,
 		Scope:         "none",
 		RedirectUri:   "http://localhost",

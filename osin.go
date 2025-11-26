@@ -108,14 +108,13 @@ func (r *repo) openOauthRoot() (*os.Root, error) {
 	return r.root.OpenRoot(folder)
 }
 
-func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) (uint, error) {
+func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) error {
 	root, err := r.openOauthRoot()
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer root.Close()
 
-	var cnt uint = 0
 	if isOauthStorageCollectionKey(itPath) {
 		err = fs.WalkDir(root.FS(), itPath, func(p string, info os.DirEntry, err error) error {
 			if err != nil && os.IsNotExist(err) {
@@ -124,8 +123,8 @@ func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) (ui
 
 			it, _ := loadRaw(root, getObjectKey(p))
 			if it != nil {
-				if err := loaderFn(it); err == nil {
-					cnt++
+				if err := loaderFn(it); err != nil {
+					return err
 				}
 			}
 			return nil
@@ -134,15 +133,15 @@ func (r *repo) loadFromOauthPath(itPath string, loaderFn func([]byte) error) (ui
 		var raw []byte
 		raw, err = loadRaw(root, getObjectKey(itPath))
 		if err != nil {
-			return cnt, errors.NewNotFound(err, "not found")
+			return errors.NewNotFound(err, "not found")
 		}
 		if raw != nil {
-			if err := loaderFn(raw); err == nil {
-				cnt++
+			if err := loaderFn(raw); err != nil {
+				return err
 			}
 		}
 	}
-	return cnt, err
+	return err
 }
 
 // Clone
@@ -154,7 +153,7 @@ func (r *repo) Clone() osin.Storage {
 func (r *repo) ListClients() ([]osin.Client, error) {
 	clients := make([]osin.Client, 0)
 
-	_, err := r.loadFromOauthPath(r.oauthClientPath(clientsBucket), func(raw []byte) error {
+	err := r.loadFromOauthPath(r.oauthClientPath(clientsBucket), func(raw []byte) error {
 		cl := cl{}
 		if err := decodeFn(raw, &cl); err != nil {
 			return err
@@ -174,7 +173,7 @@ func (r *repo) ListClients() ([]osin.Client, error) {
 
 func (r *repo) loadClientFromPath(clientPath string) (osin.Client, error) {
 	c := new(osin.DefaultClient)
-	_, err := r.loadFromOauthPath(clientPath, func(raw []byte) error {
+	err := r.loadFromOauthPath(clientPath, func(raw []byte) error {
 		cl := cl{}
 		if err := decodeFn(raw, &cl); err != nil {
 			return errors.Annotatef(err, "Unable to unmarshal client object")
@@ -291,7 +290,7 @@ func (r *repo) SaveAuthorize(data *osin.AuthorizeData) error {
 
 func (r *repo) loadAuthorizeFromPath(authPath string) (*osin.AuthorizeData, error) {
 	data := new(osin.AuthorizeData)
-	_, err := r.loadFromOauthPath(authPath, func(raw []byte) error {
+	err := r.loadFromOauthPath(authPath, func(raw []byte) error {
 		a := auth{}
 		if err := decodeFn(raw, &a); err != nil {
 			return errors.Annotatef(err, "Unable to unmarshal client object")
@@ -331,6 +330,18 @@ func (r *repo) LoadAuthorize(code string) (*osin.AuthorizeData, error) {
 	return r.loadAuthorizeFromPath(filepath.Join(authorizeBucket, code))
 }
 
+func saveRefresh(root *os.Root, refreshTok, accessTok string) error {
+	r := ref{
+		Access: accessTok,
+	}
+
+	refreshPath := filepath.Join(refreshBucket, refreshTok)
+	if err := putItem(root, refreshPath, r); err != nil {
+		return err
+	}
+	return nil
+}
+
 // RemoveAuthorize revokes or deletes the authorization code.
 func (r *repo) RemoveAuthorize(code string) error {
 	root, err := r.openOauthRoot()
@@ -360,12 +371,7 @@ func (r *repo) SaveAccess(data *osin.AccessData) error {
 	}
 
 	if data.RefreshToken != "" {
-		ref := ref{
-			Access: data.AccessToken,
-		}
-
-		refreshPath := filepath.Join(refreshBucket, data.RefreshToken)
-		if err := putItem(root, refreshPath, ref); err != nil {
+		if err := saveRefresh(root, data.RefreshToken, data.AccessToken); err != nil {
 			return err
 		}
 	}
@@ -395,7 +401,7 @@ func (r *repo) SaveAccess(data *osin.AccessData) error {
 
 func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 	result := new(osin.AccessData)
-	_, err := r.loadFromOauthPath(accessPath, func(raw []byte) error {
+	err := r.loadFromOauthPath(accessPath, func(raw []byte) error {
 		access := acc{}
 		if err := decodeFn(raw, &access); err != nil {
 			return errors.Annotatef(err, "Unable to unmarshal access object")
@@ -459,7 +465,7 @@ func (r *repo) LoadRefresh(code string) (*osin.AccessData, error) {
 	}
 
 	refresh := ref{}
-	_, err := r.loadFromOauthPath(filepath.Join(refreshBucket, code), func(raw []byte) error {
+	err := r.loadFromOauthPath(filepath.Join(refreshBucket, code), func(raw []byte) error {
 		if err := decodeFn(raw, &refresh); err != nil {
 			return errors.Annotatef(err, "Unable to unmarshal refresh object")
 		}

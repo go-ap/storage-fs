@@ -296,6 +296,48 @@ func Test_repo_UpdateClient(t *testing.T) {
 	}
 }
 
+func Test_repo_LoadXXX_with_brokenDecode(t *testing.T) {
+	wantErr := errors.Newf("broken")
+
+	oldDecode := decodeFn
+	decodeFn = func(_ []byte, m any) error {
+		return wantErr
+	}
+	rr := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot, withClient, withAuthorization, withAccess)
+	t.Cleanup(func() {
+		rr.Close()
+		decodeFn = oldDecode
+	})
+
+	t.Run("GetClient", func(t *testing.T) {
+		_, err := rr.GetClient("test-client")
+		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
+			t.Errorf("GetClient() error = %v, wantErr %v", err, wantErr)
+		}
+	})
+
+	t.Run("LoadAuthorize", func(t *testing.T) {
+		_, err := rr.LoadAuthorize("test-code")
+		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
+			t.Errorf("LoadAuthorize() error = %v, wantErr %v", err, wantErr)
+		}
+	})
+
+	t.Run("LoadAccess", func(t *testing.T) {
+		_, err := rr.LoadAccess("access-666")
+		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
+			t.Errorf("LoadAccess() error = %v, wantErr %v", err, wantErr)
+		}
+	})
+
+	t.Run("LoadRefresh", func(t *testing.T) {
+		_, err := rr.LoadRefresh("refresh-666")
+		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
+			t.Errorf("LoadRefresh() error = %v, wantErr %v", err, wantErr)
+		}
+	})
+}
+
 func Test_repo_LoadAccess(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -526,6 +568,41 @@ func Test_repo_RemoveRefresh(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_repo_SaveXXX_with_brokenEncode(t *testing.T) {
+	wantErr := errors.Newf("broken")
+
+	oldEncode := encodeFn
+	encodeFn = func(v any) ([]byte, error) {
+		return nil, wantErr
+	}
+	rr := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot)
+	t.Cleanup(func() {
+		rr.Close()
+		encodeFn = oldEncode
+	})
+
+	t.Run("CreateClient", func(t *testing.T) {
+		err := rr.CreateClient(defaultClient)
+		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
+			t.Errorf("CreateClient() error = %v, wantErr %v", err, wantErr)
+		}
+	})
+
+	t.Run("SaveAuthorize", func(t *testing.T) {
+		err := rr.SaveAuthorize(mockAuth("test", defaultClient))
+		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
+			t.Errorf("SaveAuthorize() error = %v, wantErr %v", err, wantErr)
+		}
+	})
+
+	t.Run("SaveAccess", func(t *testing.T) {
+		err := rr.SaveAccess(mockAccess("test-access", defaultClient))
+		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
+			t.Errorf("SaveAccess() error = %v, wantErr %v", err, wantErr)
+		}
+	})
 }
 
 func Test_repo_SaveAuthorize(t *testing.T) {
