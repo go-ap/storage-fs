@@ -400,6 +400,13 @@ func Test_repo_LoadRefresh(t *testing.T) {
 			code:    "test",
 			wantErr: errNotOpen,
 		},
+		{
+			name:     "with refresh",
+			fields:   fields{path: t.TempDir()},
+			code:     "refresh-666",
+			setupFns: []initFn{withOpenRoot, withClient, withAuthorization, withAccess},
+			want:     mockAccess("access-666", defaultClient),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -413,7 +420,7 @@ func Test_repo_LoadRefresh(t *testing.T) {
 			if tt.wantErr != nil {
 				return
 			}
-			if !cmp.Equal(got, tt.wantErr) {
+			if !cmp.Equal(got, tt.want) {
 				t.Errorf("LoadRefresh() got %s", cmp.Diff(tt.want, got))
 			}
 		})

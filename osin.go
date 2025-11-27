@@ -49,7 +49,6 @@ type auth struct {
 type acc struct {
 	Client       string
 	Authorize    string
-	Previous     string
 	AccessToken  string
 	RefreshToken string
 	ExpiresIn    time.Duration
@@ -359,12 +358,7 @@ func (r *repo) SaveAccess(data *osin.AccessData) error {
 		return err
 	}
 
-	prev := ""
 	authorizeData := &osin.AuthorizeData{}
-
-	if data.AccessData != nil {
-		prev = data.AccessData.AccessToken
-	}
 
 	if data.AuthorizeData != nil {
 		authorizeData = data.AuthorizeData
@@ -383,7 +377,6 @@ func (r *repo) SaveAccess(data *osin.AccessData) error {
 	acc := acc{
 		Client:       data.Client.GetId(),
 		Authorize:    authorizeData.Code,
-		Previous:     prev,
 		AccessToken:  data.AccessToken,
 		RefreshToken: data.RefreshToken,
 		ExpiresIn:    time.Duration(data.ExpiresIn),
@@ -421,8 +414,8 @@ func (r *repo) loadAccessFromPath(accessPath string) (*osin.AccessData, error) {
 				result.AuthorizeData = data
 			}
 		}
-		if access.Previous != "" {
-			if data, _ := r.loadAccessFromPath(filepath.Join(accessBucket, access.Previous)); data != nil {
+		if access.RefreshToken != "" {
+			if data, _ := r.loadAccessFromPath(filepath.Join(accessBucket, access.RefreshToken)); data != nil {
 				result.AccessData = data
 			}
 		}

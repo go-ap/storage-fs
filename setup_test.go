@@ -184,17 +184,30 @@ func mockAuth(code string, cl osin.Client) *osin.AuthorizeData {
 }
 
 func mockAccess(code string, cl osin.Client) *osin.AccessData {
-	return &osin.AccessData{
+	ad := &osin.AccessData{
 		Client:        cl,
 		AuthorizeData: mockAuth("test-code", cl),
 		AccessToken:   code,
-		RefreshToken:  "refresh-666",
 		ExpiresIn:     10,
 		Scope:         "none",
 		RedirectUri:   "http://localhost",
 		CreatedAt:     time.Now().Add(10 * time.Minute).Round(10 * time.Minute),
 		UserData:      vocab.IRI("https://example.com/jdoe"),
 	}
+	if code != "refresh-666" {
+		ad.RefreshToken = "refresh-666"
+		ad.AccessData = &osin.AccessData{
+			Client:        cl,
+			AuthorizeData: mockAuth("test-code", cl),
+			AccessToken:   "refresh-666",
+			ExpiresIn:     10,
+			Scope:         "none",
+			RedirectUri:   "http://localhost",
+			CreatedAt:     time.Now().Add(10 * time.Minute).Round(10 * time.Minute),
+			UserData:      vocab.IRI("https://example.com/jdoe"),
+		}
+	}
+	return ad
 }
 
 func withClient(r *repo) *repo {
@@ -212,8 +225,11 @@ func withAuthorization(r *repo) *repo {
 }
 
 func withAccess(r *repo) *repo {
+	if err := r.SaveAccess(mockAccess("refresh-666", defaultClient)); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("failed to create access data")
+	}
 	if err := r.SaveAccess(mockAccess("access-666", defaultClient)); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("failed to create authorization data")
+		r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("failed to create access data")
 	}
 	return r
 }
