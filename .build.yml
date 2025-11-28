@@ -15,4 +15,5 @@ tasks:
       go test -tags conformance -count=1 -json . | go run github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt -showteststatus
   - coverage: |
       cd storage-fs
+      git switch -C master origin/master
       go run github.com/mattn/goveralls@latest -tags conformance -flagname unit-tests -service=${CI_NAME} -repotokenfile ~/.coveralls.tok

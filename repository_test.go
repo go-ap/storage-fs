@@ -531,6 +531,7 @@ func Test_repo_AddTo(t *testing.T) {
 }
 
 func Test_repo_Load(t *testing.T) {
+	// NOTE(marius): happy path tests for a fully mocked repo
 	r := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot, withGeneratedMocks)
 	t.Cleanup(r.Close)
 
