@@ -85,6 +85,13 @@ func Test_repo_Open(t *testing.T) {
 			wantErr: error(unix.ENOENT),
 		},
 	}
+	t.Run("Error on nil repo", func(t *testing.T) {
+		var r *repo
+		wantErr := errors.Newf("Unable to open uninitialized db")
+		if err := r.Open(); !cmp.Equal(err, wantErr, EquateWeakErrors) {
+			t.Errorf("Open() error = %s", cmp.Diff(wantErr, err, EquateWeakErrors))
+		}
+	})
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &repo{
@@ -112,9 +119,420 @@ func getwd() (string, error) {
 	return os.Getwd()
 }
 
+func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
+	return &vocab.OrderedCollection{
+		ID:           id,
+		AttributedTo: vocab.IRI("https://example.com"),
+		Type:         vocab.OrderedCollectionType,
+		First:        vocab.IRI("https://example.com/replies?" + filters.ToValues(filters.WithMaxCount(filters.MaxItems)).Encode()),
+		Published:    time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
+		CC:           vocab.ItemCollection{vocab.PublicNS},
+	}
+}
+
+func Test_createCollection(t *testing.T) {
+	tests := []struct {
+		name     string
+		owner    vocab.Item
+		iri      vocab.IRI
+		expected vocab.CollectionInterface
+		wantErr  bool
+	}{
+		{
+			name:     "example.com/replies",
+			owner:    &vocab.Actor{ID: "https://example.com"},
+			iri:      "https://example.com/replies",
+			expected: expectedCol("https://example.com/replies"),
+			wantErr:  false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				r := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot)
+				defer r.Close()
+
+				col, err := createCollectionInPath(r, tt.iri, tt.owner)
+				if (err != nil) != tt.wantErr {
+					t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				if !vocab.ItemsEqual(col, tt.expected.GetLink()) {
+					t.Errorf("Returned collection is not equal to expected %v: %v", tt.expected, col)
+				}
+				saved, err := r.Load(tt.iri)
+				if err != nil {
+					t.Errorf("Unable to load collection at IRI %q: %s", tt.iri, err)
+				}
+				if !vocab.ItemsEqual(tt.expected, saved) {
+					t.Errorf("Saved collection is not equal to expected %s", cmp.Diff(tt.expected, saved))
+				}
+			})
+		})
+	}
+}
+
+func errPathNotFound(path string) error {
+	return &fs.PathError{Op: "openat", Path: path, Err: unix.ENOENT}
+}
+
+func defaultCol(iri vocab.IRI) vocab.CollectionInterface {
+	return &vocab.OrderedCollection{
+		ID:        iri,
+		Type:      vocab.OrderedCollectionType,
+		CC:        vocab.ItemCollection{vocab.PublicNS},
+		Published: time.Now().UTC(),
+	}
+}
+
+func withOrderedCollection(iri vocab.IRI) func(r *repo) *repo {
+	return func(r *repo) *repo {
+		if _, err := saveCollection(r, defaultCol(iri)); err != nil {
+			r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": iri}).Errorf("unable to save collection")
+		}
+		return r
+	}
+}
+
+func withCollection(iri vocab.IRI) func(r *repo) *repo {
+	col := &vocab.Collection{
+		ID:        iri,
+		Type:      vocab.CollectionType,
+		CC:        vocab.ItemCollection{vocab.PublicNS},
+		Published: time.Now().Round(time.Second).UTC(),
+	}
+	return func(r *repo) *repo {
+		if _, err := saveCollection(r, col); err != nil {
+			r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": iri}).Errorf("unable to save collection")
+		}
+		return r
+	}
+}
+
+func withOrderedCollectionHavingItems(r *repo) *repo {
+	colIRI := vocab.IRI("https://example.com/followers")
+	col := vocab.OrderedCollection{
+		ID:        colIRI,
+		Type:      vocab.OrderedCollectionType,
+		CC:        vocab.ItemCollection{vocab.PublicNS},
+		Published: time.Now().UTC(),
+	}
+	if _, err := saveCollection(r, &col); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": colIRI}).Errorf("unable to save collection")
+	}
+	obIRI := vocab.IRI("https://example.com")
+	ob, err := save(r, vocab.Object{ID: obIRI})
+	if err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": obIRI}).Errorf("unable to save item")
+	}
+	if err := r.AddTo(col.ID, ob); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "col": colIRI, "ob": obIRI}).Errorf("unable to add item to collection")
+	}
+	return r
+}
+
+func withCollectionHavingItems(r *repo) *repo {
+	colIRI := vocab.IRI("https://example.com/followers")
+	col := vocab.Collection{
+		ID:        colIRI,
+		Type:      vocab.CollectionType,
+		CC:        vocab.ItemCollection{vocab.PublicNS},
+		Published: time.Now().UTC(),
+	}
+	if _, err := saveCollection(r, &col); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": colIRI}).Errorf("unable to save collection")
+	}
+	obIRI := vocab.IRI("https://example.com")
+	ob, err := save(r, vocab.Object{ID: obIRI})
+	if err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": obIRI}).Errorf("unable to save item")
+	}
+	if err := r.AddTo(col.ID, ob); err != nil {
+		r.logger.WithContext(lw.Ctx{"err": err.Error(), "col": colIRI, "ob": obIRI}).Errorf("unable to add item to collection")
+	}
+	return r
+}
+
+func withItems(items ...vocab.Item) initFn {
+	return func(r *repo) *repo {
+		for _, it := range items {
+			if _, err := save(r, it); err != nil {
+				r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("unable to save item: %s", it.GetLink())
+			}
+		}
+		return r
+	}
+}
+
+func Test_repo_RemoveFrom(t *testing.T) {
+	type args struct {
+		colIRI vocab.IRI
+		it     vocab.Item
+	}
+
+	tests := []struct {
+		name     string
+		path     string
+		setupFns []initFn
+		args     args
+		wantErr  error
+	}{
+		{
+			name:    "not open",
+			path:    t.TempDir(),
+			args:    args{},
+			wantErr: errNotOpen,
+		},
+		{
+			name:     "empty",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot},
+			args:     args{},
+			wantErr:  errors.NotFoundf("not found"), // empty iri can't be found, unsure if that makes sense
+		},
+		{
+			name:     "collection doesn't exist",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: errPathNotFound("example.com/followers"),
+		},
+		{
+			name:     "item doesn't exist in ordered collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot, withOrderedCollection("https://example.com/followers")},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: nil, // if the item doesn't exist, we don't error out, unsure if that makes sense
+		},
+		{
+			name:     "item exists in ordered collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot, withOrderedCollectionHavingItems},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: nil,
+		},
+		{
+			name:     "item doesn't exist in collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot, withCollection("https://example.com/followers")},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: nil, // if the item doesn't exist, we don't error out, unsure if that makes sense
+		},
+		{
+			name:     "item exists in collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot, withCollectionHavingItems},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := mockRepo(t, fields{path: tt.path}, tt.setupFns...)
+			t.Cleanup(r.Close)
+
+			err := r.RemoveFrom(tt.args.colIRI, tt.args.it)
+			if !cmp.Equal(tt.wantErr, err, EquateWeakErrors) {
+				t.Errorf("RemoveFrom() error = %s", cmp.Diff(tt.wantErr, err))
+				return
+			}
+			if tt.wantErr != nil {
+				// NOTE(marius): if we expected an error we don't need to following tests
+				return
+			}
+
+			it, err := r.Load(tt.args.colIRI)
+			if err != nil {
+				t.Errorf("Load() after RemoveFrom() error = %v", err)
+				return
+			}
+
+			col, ok := it.(vocab.CollectionInterface)
+			if !ok {
+				t.Errorf("Load() after RemoveFrom(), didn't return a CollectionInterface type")
+				return
+			}
+
+			if col.Contains(tt.args.it) {
+				t.Errorf("Load() after RemoveFrom(), the item is still in collection %#v", col.Collection())
+			}
+
+			// NOTE(marius): this is a bit of a hackish way to skip testing of the object when we didn't
+			// save it to the disk
+			if vocab.IsObject(tt.args.it) {
+				ob, err := r.Load(tt.args.it.GetLink())
+				if err != nil {
+					t.Errorf("Load() of the object after RemoveFrom() error = %v", err)
+					return
+				}
+				if !vocab.ItemsEqual(ob, tt.args.it) {
+					t.Errorf("Loaded item after RemoveFrom(), is not equal %#v with the one provided %#v", ob, tt.args.it)
+				}
+			}
+		})
+	}
+}
+
+func Test_repo_AddTo(t *testing.T) {
+	type args struct {
+		colIRI vocab.IRI
+		it     vocab.Item
+	}
+
+	tests := []struct {
+		name     string
+		path     string
+		setupFns []initFn
+		setup    func(*repo) error
+		args     args
+		wantErr  error
+	}{
+		{
+			name:    "not open",
+			path:    t.TempDir(),
+			args:    args{},
+			wantErr: errNotOpen,
+		},
+		{
+			name:     "empty",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot},
+			args:     args{},
+			wantErr:  errors.NotFoundf("not found"), // empty iri can't be found, unsure if that makes sense
+		},
+		{
+			name:     "collection doesn't exist",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: errPathNotFound("example.com/followers"),
+		},
+		{
+			name:     "item doesn't exist in collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot, withCollection("https://example.com/followers")},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: errors.NotFoundf("invalid item to add to collection"),
+		},
+		{
+			name:     "item doesn't exist in ordered collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot, withOrderedCollection("https://example.com/followers")},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: errors.NotFoundf("invalid item to add to collection"),
+		},
+		{
+			name:     "item exists in ordered collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot, withOrderedCollectionHavingItems},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: nil,
+		},
+		{
+			name:     "item exists in collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot, withCollectionHavingItems},
+			args: args{
+				colIRI: "https://example.com/followers",
+				it:     vocab.IRI("https://example.com"),
+			},
+			wantErr: nil,
+		},
+		{
+			name:     "item to non-existent hidden collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot, withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
+			args: args{
+				colIRI: "https://example.com/~jdoe/blocked",
+				it:     vocab.IRI("https://example.com/example"),
+			},
+			wantErr: nil,
+		},
+		{
+			name:     "item to hidden collection",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot, withCollection("https://example.com/~jdoe/blocked"), withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
+			args: args{
+				colIRI: "https://example.com/~jdoe/blocked",
+				it:     vocab.IRI("https://example.com/example"),
+			},
+			wantErr: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := mockRepo(t, fields{path: tt.path}, tt.setupFns...)
+			t.Cleanup(r.Close)
+
+			err := r.AddTo(tt.args.colIRI, tt.args.it)
+			if tt.wantErr != nil {
+				if err != nil {
+					if tt.wantErr.Error() != err.Error() {
+						t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
+					}
+				} else {
+					t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+
+			it, err := r.Load(tt.args.colIRI)
+			if err != nil {
+				t.Errorf("Load() after AddTo() error = %v", err)
+				return
+			}
+
+			col, ok := it.(vocab.CollectionInterface)
+			if !ok {
+				t.Errorf("Load() after AddTo(), didn't return a CollectionInterface type")
+				return
+			}
+
+			if !col.Contains(tt.args.it) {
+				t.Errorf("Load() after AddTo(), the item is not in collection %#v", col.Collection())
+			}
+
+			ob, err := r.Load(tt.args.it.GetLink())
+			if err != nil {
+				t.Errorf("Load() of the object after AddTo() error = %v", err)
+				return
+			}
+			if !vocab.ItemsEqual(ob, tt.args.it) {
+				t.Errorf("Loaded item after AddTo(), is not equal %#v with the one provided %#v", ob, tt.args.it)
+			}
+		})
+	}
+}
+
 func Test_repo_Load(t *testing.T) {
 	r := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot, withGeneratedMocks)
-	defer r.Close()
+	t.Cleanup(r.Close)
 
 	type args struct {
 		iri vocab.IRI
@@ -443,419 +861,6 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 	}
 }
 
-func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
-	return &vocab.OrderedCollection{
-		ID:           id,
-		AttributedTo: vocab.IRI("https://example.com"),
-		Type:         vocab.OrderedCollectionType,
-		First:        vocab.IRI("https://example.com/replies?" + filters.ToValues(filters.WithMaxCount(filters.MaxItems)).Encode()),
-		Published:    time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
-		CC:           vocab.ItemCollection{vocab.PublicNS},
-	}
-}
-
-func Test_createCollection(t *testing.T) {
-	tests := []struct {
-		name     string
-		owner    vocab.Item
-		iri      vocab.IRI
-		expected vocab.CollectionInterface
-		wantErr  bool
-	}{
-		{
-			name:     "example.com/replies",
-			owner:    &vocab.Actor{ID: "https://example.com"},
-			iri:      "https://example.com/replies",
-			expected: expectedCol("https://example.com/replies"),
-			wantErr:  false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				r := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot)
-				defer r.Close()
-
-				col, err := createCollectionInPath(r, tt.iri, tt.owner)
-				if (err != nil) != tt.wantErr {
-					t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
-				}
-				if !vocab.ItemsEqual(col, tt.expected.GetLink()) {
-					t.Errorf("Returned collection is not equal to expected %v: %v", tt.expected, col)
-				}
-				saved, err := r.Load(tt.iri)
-				if err != nil {
-					t.Errorf("Unable to load collection at IRI %q: %s", tt.iri, err)
-				}
-				if !vocab.ItemsEqual(tt.expected, saved) {
-					t.Errorf("Saved collection is not equal to expected %s", cmp.Diff(tt.expected, saved))
-				}
-			})
-		})
-	}
-}
-
-func errPathNotFound(path string) error {
-	return &fs.PathError{Op: "openat", Path: path, Err: unix.ENOENT}
-}
-
-func defaultCol(iri vocab.IRI) vocab.CollectionInterface {
-	return &vocab.OrderedCollection{
-		ID:        iri,
-		Type:      vocab.OrderedCollectionType,
-		CC:        vocab.ItemCollection{vocab.PublicNS},
-		Published: time.Now().UTC(),
-	}
-}
-
-func withOrderedCollection(iri vocab.IRI) func(r *repo) *repo {
-	return func(r *repo) *repo {
-		if _, err := saveCollection(r, defaultCol(iri)); err != nil {
-			r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": iri}).Errorf("unable to save collection")
-		}
-		return r
-	}
-}
-
-func withCollection(iri vocab.IRI) func(r *repo) *repo {
-	col := &vocab.Collection{
-		ID:        iri,
-		Type:      vocab.CollectionType,
-		CC:        vocab.ItemCollection{vocab.PublicNS},
-		Published: time.Now().Round(time.Second).UTC(),
-	}
-	return func(r *repo) *repo {
-		if _, err := saveCollection(r, col); err != nil {
-			r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": iri}).Errorf("unable to save collection")
-		}
-		return r
-	}
-}
-
-func withOrderedCollectionHavingItems(r *repo) *repo {
-	colIRI := vocab.IRI("https://example.com/followers")
-	col := vocab.OrderedCollection{
-		ID:        colIRI,
-		Type:      vocab.OrderedCollectionType,
-		CC:        vocab.ItemCollection{vocab.PublicNS},
-		Published: time.Now().UTC(),
-	}
-	if _, err := saveCollection(r, &col); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": colIRI}).Errorf("unable to save collection")
-	}
-	obIRI := vocab.IRI("https://example.com")
-	ob, err := save(r, vocab.Object{ID: obIRI})
-	if err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": obIRI}).Errorf("unable to save item")
-	}
-	if err := r.AddTo(col.ID, ob); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "col": colIRI, "ob": obIRI}).Errorf("unable to add item to collection")
-	}
-	return r
-}
-
-func withCollectionHavingItems(r *repo) *repo {
-	colIRI := vocab.IRI("https://example.com/followers")
-	col := vocab.Collection{
-		ID:        colIRI,
-		Type:      vocab.CollectionType,
-		CC:        vocab.ItemCollection{vocab.PublicNS},
-		Published: time.Now().UTC(),
-	}
-	if _, err := saveCollection(r, &col); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": colIRI}).Errorf("unable to save collection")
-	}
-	obIRI := vocab.IRI("https://example.com")
-	ob, err := save(r, vocab.Object{ID: obIRI})
-	if err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": obIRI}).Errorf("unable to save item")
-	}
-	if err := r.AddTo(col.ID, ob); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "col": colIRI, "ob": obIRI}).Errorf("unable to add item to collection")
-	}
-	return r
-}
-
-var withJdoeInbox = withOrderedCollection("https://example.com/~jdoe/inbox")
-
-func withItems(items ...vocab.Item) initFn {
-	return func(r *repo) *repo {
-		for _, it := range items {
-			if _, err := save(r, it); err != nil {
-				r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("unable to save item: %s", it.GetLink())
-			}
-		}
-		return r
-	}
-}
-
-func Test_repo_RemoveFrom(t *testing.T) {
-	type args struct {
-		colIRI vocab.IRI
-		it     vocab.Item
-	}
-
-	tests := []struct {
-		name     string
-		path     string
-		setupFns []initFn
-		args     args
-		wantErr  error
-	}{
-		{
-			name:    "not open",
-			path:    t.TempDir(),
-			args:    args{},
-			wantErr: errNotOpen,
-		},
-		{
-			name:     "empty",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot},
-			args:     args{},
-			wantErr:  errors.NotFoundf("not found"), // empty iri can't be found, unsure if that makes sense
-		},
-		{
-			name:     "collection doesn't exist",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot},
-			args: args{
-				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
-			},
-			wantErr: errPathNotFound("example.com/followers"),
-		},
-		{
-			name:     "item doesn't exist in ordered collection",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot, withOrderedCollection("https://example.com/followers")},
-			args: args{
-				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
-			},
-			wantErr: nil, // if the item doesn't exist, we don't error out, unsure if that makes sense
-		},
-		{
-			name:     "item exists in ordered collection",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot, withOrderedCollectionHavingItems},
-			args: args{
-				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
-			},
-			wantErr: nil,
-		},
-		{
-			name:     "item doesn't exist in collection",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot, withCollection("https://example.com/followers")},
-			args: args{
-				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
-			},
-			wantErr: nil, // if the item doesn't exist, we don't error out, unsure if that makes sense
-		},
-		{
-			name:     "item exists in collection",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot, withCollectionHavingItems},
-			args: args{
-				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
-			},
-			wantErr: nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := mockRepo(t, fields{path: tt.path}, tt.setupFns...)
-			defer r.Close()
-
-			err := r.RemoveFrom(tt.args.colIRI, tt.args.it)
-			if !cmp.Equal(tt.wantErr, err, EquateWeakErrors) {
-				t.Errorf("RemoveFrom() error = %s", cmp.Diff(tt.wantErr, err))
-				return
-			}
-			if tt.wantErr != nil {
-				// NOTE(marius): if we expected an error we don't need to following tests
-				return
-			}
-
-			it, err := r.Load(tt.args.colIRI)
-			if err != nil {
-				t.Errorf("Load() after RemoveFrom() error = %v", err)
-				return
-			}
-
-			col, ok := it.(vocab.CollectionInterface)
-			if !ok {
-				t.Errorf("Load() after RemoveFrom(), didn't return a CollectionInterface type")
-				return
-			}
-
-			if col.Contains(tt.args.it) {
-				t.Errorf("Load() after RemoveFrom(), the item is still in collection %#v", col.Collection())
-			}
-
-			// NOTE(marius): this is a bit of a hackish way to skip testing of the object when we didn't
-			// save it to the disk
-			if vocab.IsObject(tt.args.it) {
-				ob, err := r.Load(tt.args.it.GetLink())
-				if err != nil {
-					t.Errorf("Load() of the object after RemoveFrom() error = %v", err)
-					return
-				}
-				if !vocab.ItemsEqual(ob, tt.args.it) {
-					t.Errorf("Loaded item after RemoveFrom(), is not equal %#v with the one provided %#v", ob, tt.args.it)
-				}
-			}
-		})
-	}
-}
-
-func Test_repo_AddTo(t *testing.T) {
-	type args struct {
-		colIRI vocab.IRI
-		it     vocab.Item
-	}
-
-	tests := []struct {
-		name     string
-		path     string
-		setupFns []initFn
-		setup    func(*repo) error
-		args     args
-		wantErr  error
-	}{
-		{
-			name:    "not open",
-			path:    t.TempDir(),
-			args:    args{},
-			wantErr: errNotOpen,
-		},
-		{
-			name:     "empty",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot},
-			args:     args{},
-			wantErr:  errors.NotFoundf("not found"), // empty iri can't be found, unsure if that makes sense
-		},
-		{
-			name:     "collection doesn't exist",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot},
-			args: args{
-				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
-			},
-			wantErr: errPathNotFound("example.com/followers"),
-		},
-		{
-			name:     "item doesn't exist in collection",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot, withCollection("https://example.com/followers")},
-			args: args{
-				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
-			},
-			wantErr: errors.NotFoundf("invalid item to add to collection"),
-		},
-		{
-			name:     "item doesn't exist in ordered collection",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot, withOrderedCollection("https://example.com/followers")},
-			args: args{
-				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
-			},
-			wantErr: errors.NotFoundf("invalid item to add to collection"),
-		},
-		{
-			name:     "item exists in ordered collection",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot, withOrderedCollectionHavingItems},
-			args: args{
-				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
-			},
-			wantErr: nil,
-		},
-		{
-			name:     "item exists in collection",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot, withCollectionHavingItems},
-			args: args{
-				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
-			},
-			wantErr: nil,
-		},
-		{
-			name:     "item to non-existent hidden collection",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot, withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
-			args: args{
-				colIRI: "https://example.com/~jdoe/blocked",
-				it:     vocab.IRI("https://example.com/example"),
-			},
-			wantErr: nil,
-		},
-		{
-			name:     "item to hidden collection",
-			path:     t.TempDir(),
-			setupFns: []initFn{withOpenRoot, withCollection("https://example.com/~jdoe/blocked"), withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
-			args: args{
-				colIRI: "https://example.com/~jdoe/blocked",
-				it:     vocab.IRI("https://example.com/example"),
-			},
-			wantErr: nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := mockRepo(t, fields{path: tt.path}, tt.setupFns...)
-			defer r.Close()
-
-			err := r.AddTo(tt.args.colIRI, tt.args.it)
-			if tt.wantErr != nil {
-				if err != nil {
-					if tt.wantErr.Error() != err.Error() {
-						t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
-					}
-				} else {
-					t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
-				}
-				return
-			}
-
-			it, err := r.Load(tt.args.colIRI)
-			if err != nil {
-				t.Errorf("Load() after AddTo() error = %v", err)
-				return
-			}
-
-			col, ok := it.(vocab.CollectionInterface)
-			if !ok {
-				t.Errorf("Load() after AddTo(), didn't return a CollectionInterface type")
-				return
-			}
-
-			if !col.Contains(tt.args.it) {
-				t.Errorf("Load() after AddTo(), the item is not in collection %#v", col.Collection())
-			}
-
-			ob, err := r.Load(tt.args.it.GetLink())
-			if err != nil {
-				t.Errorf("Load() of the object after AddTo() error = %v", err)
-				return
-			}
-			if !vocab.ItemsEqual(ob, tt.args.it) {
-				t.Errorf("Loaded item after AddTo(), is not equal %#v with the one provided %#v", ob, tt.args.it)
-			}
-		})
-	}
-}
-
 func Test_repo_Save(t *testing.T) {
 	type test struct {
 		name     string
@@ -897,7 +902,7 @@ func Test_repo_Save(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			got, err := r.Save(tt.it)
 			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
@@ -948,7 +953,7 @@ func Test_repo_Delete(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			if err := r.Delete(tt.it); !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
 				t.Errorf("Delete() error = %v, wantErr %v", err, tt.wantErr)

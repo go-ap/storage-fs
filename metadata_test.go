@@ -55,7 +55,7 @@ func Test_repo_LoadKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			got, err := r.LoadKey(tt.iri)
 			if !errors.Is(err, tt.wantErr) {
@@ -127,7 +127,7 @@ func Test_repo_LoadMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			if err := r.LoadMetadata(tt.args.iri, tt.args.m); !errors.Is(err, tt.wantErr) {
 				t.Errorf("LoadMetadata() error = %v, wantErr %v", err, tt.wantErr)
@@ -207,7 +207,7 @@ func Test_repo_PasswordCheck(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			if err := r.PasswordCheck(tt.args.iri, tt.args.pw); !errors.Is(err, tt.wantErr) {
 				t.Errorf("PasswordCheck() error = %v, wantErr %v", err, tt.wantErr)
@@ -266,7 +266,7 @@ func Test_repo_PasswordSet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			if err := r.PasswordSet(tt.args.iri, tt.args.pw); !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
 				t.Errorf("PasswordSet() error = %v, wantErr %v", err, tt.wantErr)
@@ -317,7 +317,7 @@ func Test_repo_SaveKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			got, err := r.SaveKey(tt.args.iri, tt.args.key)
 			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
@@ -384,7 +384,7 @@ func Test_repo_SaveMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			if err := r.SaveMetadata(tt.args.iri, tt.args.m); !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
 				t.Errorf("SaveMetadata() error = %v, wantErr %v", err, tt.wantErr)

@@ -76,6 +76,9 @@ type repo struct {
 
 // Open
 func (r *repo) Open() error {
+	if r == nil {
+		return errors.Newf("Unable to open uninitialized db")
+	}
 	root, err := os.OpenRoot(r.path)
 	if err != nil {
 		return err

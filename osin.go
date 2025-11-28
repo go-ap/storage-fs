@@ -275,6 +275,9 @@ func (r *repo) RemoveClient(id string) error {
 
 // SaveAuthorize saves authorize data.
 func (r *repo) SaveAuthorize(data *osin.AuthorizeData) error {
+	if r.root == nil {
+		return errNotOpen
+	}
 	if data == nil {
 		return errors.Errorf("unable to save nil authorization data")
 	}

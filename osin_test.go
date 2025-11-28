@@ -299,11 +299,11 @@ func Test_repo_UpdateClient(t *testing.T) {
 func Test_repo_LoadXXX_with_brokenDecode(t *testing.T) {
 	wantErr := errors.Newf("broken")
 
+	rr := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot, withMockItems, withMetadataJDoe, withClient, withAuthorization, withAccess)
 	oldDecode := decodeFn
 	decodeFn = func(_ []byte, m any) error {
 		return wantErr
 	}
-	rr := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot, withClient, withAuthorization, withAccess)
 	t.Cleanup(func() {
 		rr.Close()
 		decodeFn = oldDecode
@@ -334,6 +334,27 @@ func Test_repo_LoadXXX_with_brokenDecode(t *testing.T) {
 		_, err := rr.LoadRefresh("refresh-666")
 		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
 			t.Errorf("LoadRefresh() error = %v, wantErr %v", err, wantErr)
+		}
+	})
+
+	t.Run("LoadMetadata", func(t *testing.T) {
+		err := rr.LoadMetadata("https://example.com/~jdoe", Metadata{Pw: []byte("asd"), PrivateKey: pkcs8Pk})
+		if !errors.Is(err, wantErr) {
+			t.Errorf("LoadMetadata() error = %v, wantErr %v", err, wantErr)
+		}
+	})
+
+	t.Run("LoadKey", func(t *testing.T) {
+		_, err := rr.LoadKey("https://example.com/~jdoe")
+		if !errors.Is(err, wantErr) {
+			t.Errorf("LoadKey() error = %v, wantErr %v", err, wantErr)
+		}
+	})
+
+	t.Run("PasswordCheck", func(t *testing.T) {
+		err := rr.PasswordCheck("https://example.com/~jdoe", []byte("asd"))
+		if !errors.Is(err, wantErr) {
+			t.Errorf("PasswordCheck() error = %v, wantErr %v", err, wantErr)
 		}
 	})
 }
@@ -411,7 +432,7 @@ func Test_repo_LoadRefresh(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			got, err := r.LoadRefresh(tt.code)
 			if !errors.Is(err, tt.wantErr) {
@@ -456,7 +477,7 @@ func Test_repo_RemoveAccess(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			if err := r.RemoveAccess(tt.code); !errors.Is(err, tt.wantErr) {
 				t.Errorf("RemoveAccess() error = %v, wantErr %v", err, tt.wantErr)
@@ -568,7 +589,7 @@ func Test_repo_RemoveRefresh(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			if err := r.RemoveRefresh(tt.code); !errors.Is(err, tt.wantErr) {
 				t.Errorf("RemoveRefresh() error = %v, wantErr %v", err, tt.wantErr)
@@ -580,11 +601,11 @@ func Test_repo_RemoveRefresh(t *testing.T) {
 func Test_repo_SaveXXX_with_brokenEncode(t *testing.T) {
 	wantErr := errors.Newf("broken")
 
+	rr := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot, withMockItems)
 	oldEncode := encodeFn
 	encodeFn = func(v any) ([]byte, error) {
 		return nil, wantErr
 	}
-	rr := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot)
 	t.Cleanup(func() {
 		rr.Close()
 		encodeFn = oldEncode
@@ -610,6 +631,27 @@ func Test_repo_SaveXXX_with_brokenEncode(t *testing.T) {
 			t.Errorf("SaveAccess() error = %v, wantErr %v", err, wantErr)
 		}
 	})
+
+	t.Run("SaveMetadata", func(t *testing.T) {
+		err := rr.SaveMetadata("https://example.com/~jdoe", Metadata{Pw: []byte("asd"), PrivateKey: pkcs8Pk})
+		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
+			t.Errorf("SaveMetadata() error = %v, wantErr %v", err, wantErr)
+		}
+	})
+
+	t.Run("PasswordSet", func(t *testing.T) {
+		err := rr.PasswordSet("https://example.com/~jdoe", []byte("dsa"))
+		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
+			t.Errorf("PasswordSet() error = %v, wantErr %v", err, wantErr)
+		}
+	})
+
+	t.Run("SaveKey", func(t *testing.T) {
+		_, err := rr.SaveKey("https://example.com/~jdoe", pk)
+		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
+			t.Errorf("SaveKey() error = %v, wantErr %v", err, wantErr)
+		}
+	})
 }
 
 func Test_repo_SaveAuthorize(t *testing.T) {
@@ -621,9 +663,15 @@ func Test_repo_SaveAuthorize(t *testing.T) {
 		wantErr  error
 	}{
 		{
-			name:    "empty",
+			name:    "not open",
 			path:    t.TempDir(),
-			wantErr: errors.Errorf("unable to save nil authorization data"),
+			wantErr: errNotOpen,
+		},
+		{
+			name:     "empty",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot},
+			wantErr:  errors.Errorf("unable to save nil authorization data"),
 		},
 		{
 			name:     "save mock auth",
@@ -636,7 +684,7 @@ func Test_repo_SaveAuthorize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, fields{path: tt.path}, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			err := r.SaveAuthorize(tt.auth)
 			if tt.wantErr != nil {
@@ -693,7 +741,7 @@ func Test_repo_LoadAuthorize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := mockRepo(t, fields{path: tt.path}, tt.setupFns...)
-			defer r.Close()
+			t.Cleanup(r.Close)
 
 			got, err := r.LoadAuthorize(tt.code)
 			if tt.wantErr != nil {

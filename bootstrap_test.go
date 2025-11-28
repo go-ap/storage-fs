@@ -8,6 +8,7 @@ import (
 	"git.sr.ht/~mariusor/lw"
 	"github.com/go-ap/cache"
 	"github.com/go-ap/errors"
+	"github.com/google/go-cmp/cmp"
 )
 
 func createForbiddenDir(t *testing.T) string {
@@ -41,7 +42,7 @@ func TestBootstrap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := Bootstrap(tt.arg); !errors.Is(err, tt.wantErr) {
+			if err := Bootstrap(tt.arg); !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
 				t.Errorf("Bootstrap() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
