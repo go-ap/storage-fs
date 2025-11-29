@@ -411,15 +411,15 @@ func Test_repo_LoadRefresh(t *testing.T) {
 		wantErr  error
 	}{
 		{
-			name:    "empty",
+			name:    "not open",
 			fields:  fields{},
-			wantErr: errors.NotFoundf("Empty refresh code"),
+			code:    "test",
+			wantErr: errNotOpen,
 		},
 		{
 			name:    "empty",
 			fields:  fields{},
-			code:    "test",
-			wantErr: errNotOpen,
+			wantErr: errors.NotFoundf("Empty refresh code"),
 		},
 		{
 			name:     "with refresh",
@@ -754,10 +754,8 @@ func Test_repo_LoadAuthorize(t *testing.T) {
 				}
 				return
 			}
-			gotJson, _ := json.Marshal(got)
-			wantJson, _ := json.Marshal(tt.want)
-			if !bytes.Equal(gotJson, wantJson) {
-				t.Errorf("LoadAuthorize() got =\n%s\n====\n%s", gotJson, wantJson)
+			if !cmp.Equal(got, tt.want) {
+				t.Errorf("LoadAuthorize() diff %s", cmp.Diff(got, tt.want))
 			}
 		})
 	}

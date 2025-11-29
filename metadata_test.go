@@ -9,6 +9,7 @@ import (
 	vocab "github.com/go-ap/activitypub"
 	"github.com/go-ap/errors"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func Test_repo_LoadKey(t *testing.T) {
@@ -252,6 +253,16 @@ func Test_repo_PasswordSet(t *testing.T) {
 			wantErr: errors.Newf("could not generate hash for nil pw"),
 		},
 		{
+			name:     "empty iri",
+			fields:   fields{path: t.TempDir()},
+			setupFns: []initFn{withOpenRoot, withMockItems, withMetadataJDoe},
+			args: args{
+				iri: "",
+				pw:  []byte("asd"),
+			},
+			wantErr: errors.NotFoundf("not found"),
+		},
+		{
 			name: "~jdoe with pw",
 			fields: fields{
 				path: t.TempDir(),
@@ -261,6 +272,18 @@ func Test_repo_PasswordSet(t *testing.T) {
 				iri: "https://example.com/~jdoe",
 				pw:  []byte("asd"),
 			},
+		},
+		{
+			name: "password too long",
+			fields: fields{
+				path: t.TempDir(),
+			},
+			setupFns: []initFn{withOpenRoot, withMockItems, withMetadataJDoe},
+			args: args{
+				iri: "https://example.com/~jdoe",
+				pw:  []byte("################################################################################"), // 80 chars
+			},
+			wantErr: bcrypt.ErrPasswordTooLong,
 		},
 	}
 	for _, tt := range tests {
@@ -300,6 +323,18 @@ func Test_repo_SaveKey(t *testing.T) {
 			fields:   fields{path: t.TempDir()},
 			setupFns: []initFn{withOpenRoot, withMockItems},
 			wantErr:  fmt.Errorf("x509: unknown key type while marshaling PKCS#8: %T", nil),
+		},
+		{
+			name: "~jdoe with invalid key",
+			fields: fields{
+				path: t.TempDir(),
+			},
+			setupFns: []initFn{withOpenRoot, withMockItems, withMetadataJDoe},
+			args: args{
+				iri: "https://example.com/~jdoe",
+				key: []byte{0x1, 0x2, 0x3},
+			},
+			wantErr: fmt.Errorf("x509: unknown key type while marshaling PKCS#8: %T", []byte{}),
 		},
 		{
 			name: "~jdoe with private key",
