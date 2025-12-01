@@ -184,8 +184,8 @@ func defaultCol(iri vocab.IRI) vocab.CollectionInterface {
 	}
 }
 
-func withOrderedCollection(iri vocab.IRI) func(r *repo) *repo {
-	return func(r *repo) *repo {
+func withOrderedCollection(iri vocab.IRI) initFn {
+	return func(t *testing.T, r *repo) *repo {
 		if _, err := saveCollection(r, defaultCol(iri)); err != nil {
 			r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": iri}).Errorf("unable to save collection")
 		}
@@ -193,14 +193,14 @@ func withOrderedCollection(iri vocab.IRI) func(r *repo) *repo {
 	}
 }
 
-func withCollection(iri vocab.IRI) func(r *repo) *repo {
+func withCollection(iri vocab.IRI) initFn {
 	col := &vocab.Collection{
 		ID:        iri,
 		Type:      vocab.CollectionType,
 		CC:        vocab.ItemCollection{vocab.PublicNS},
 		Published: time.Now().Round(time.Second).UTC(),
 	}
-	return func(r *repo) *repo {
+	return func(t *testing.T, r *repo) *repo {
 		if _, err := saveCollection(r, col); err != nil {
 			r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": iri}).Errorf("unable to save collection")
 		}
@@ -208,7 +208,7 @@ func withCollection(iri vocab.IRI) func(r *repo) *repo {
 	}
 }
 
-func withOrderedCollectionHavingItems(r *repo) *repo {
+func withOrderedCollectionHavingItems(t *testing.T, r *repo) *repo {
 	colIRI := vocab.IRI("https://example.com/followers")
 	col := vocab.OrderedCollection{
 		ID:        colIRI,
@@ -217,20 +217,20 @@ func withOrderedCollectionHavingItems(r *repo) *repo {
 		Published: time.Now().UTC(),
 	}
 	if _, err := saveCollection(r, &col); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": colIRI}).Errorf("unable to save collection")
+		t.Errorf("unable to save collection %s: %s", colIRI, err)
 	}
 	obIRI := vocab.IRI("https://example.com")
 	ob, err := save(r, vocab.Object{ID: obIRI})
 	if err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": obIRI}).Errorf("unable to save item")
+		t.Errorf("unable to save item %s: %s", obIRI, err)
 	}
-	if err := r.AddTo(col.ID, ob); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "col": colIRI, "ob": obIRI}).Errorf("unable to add item to collection")
+	if err = r.AddTo(col.ID, ob); err != nil {
+		t.Errorf("unable to add item %s to collection %s: %s", obIRI, colIRI, err)
 	}
 	return r
 }
 
-func withCollectionHavingItems(r *repo) *repo {
+func withCollectionHavingItems(t *testing.T, r *repo) *repo {
 	colIRI := vocab.IRI("https://example.com/followers")
 	col := vocab.Collection{
 		ID:        colIRI,
@@ -239,24 +239,24 @@ func withCollectionHavingItems(r *repo) *repo {
 		Published: time.Now().UTC(),
 	}
 	if _, err := saveCollection(r, &col); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": colIRI}).Errorf("unable to save collection")
+		t.Errorf("unable to save collection %s: %s", colIRI, err)
 	}
 	obIRI := vocab.IRI("https://example.com")
 	ob, err := save(r, vocab.Object{ID: obIRI})
 	if err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "iri": obIRI}).Errorf("unable to save item")
+		t.Errorf("unable to save item %s: %s", obIRI, err)
 	}
-	if err := r.AddTo(col.ID, ob); err != nil {
-		r.logger.WithContext(lw.Ctx{"err": err.Error(), "col": colIRI, "ob": obIRI}).Errorf("unable to add item to collection")
+	if err = r.AddTo(col.ID, ob); err != nil {
+		t.Errorf("unable to add item %s to collection %s: %s", obIRI, colIRI, err)
 	}
 	return r
 }
 
 func withItems(items ...vocab.Item) initFn {
-	return func(r *repo) *repo {
+	return func(t *testing.T, r *repo) *repo {
 		for _, it := range items {
 			if _, err := save(r, it); err != nil {
-				r.logger.WithContext(lw.Ctx{"err": err.Error()}).Errorf("unable to save item: %s", it.GetLink())
+				t.Errorf("unable to save item %s: %s", it.GetLink(), err)
 			}
 		}
 		return r

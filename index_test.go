@@ -263,17 +263,6 @@ func Test_onCollectionBitmap(t *testing.T) {
 	}
 }
 
-var mockItems = vocab.ItemCollection{
-	vocab.IRI("https://example.com/plain-iri"),
-	&vocab.Object{ID: "https://example.com/1", Type: vocab.NoteType},
-	&vocab.Link{ID: "https://example.com/1", Href: "https://example.com/1", Type: vocab.LinkType},
-	&vocab.Actor{ID: "https://example.com/~jdoe", Type: vocab.PersonType},
-	&vocab.Activity{ID: "https://example.com/~jdoe/1", Type: vocab.UpdateType},
-	&vocab.Object{ID: "https://example.com/~jdoe/tag-none", Type: vocab.UpdateType},
-	&vocab.Question{ID: "https://example.com/~jdoe/2", Type: vocab.QuestionType},
-	&vocab.IntransitiveActivity{ID: "https://example.com/~jdoe/3", Type: vocab.ArriveType},
-}
-
 func mockFilesToIndex(t *testing.T, root *os.Root) *os.Root {
 	for _, mockIt := range mockItems {
 		raw, _ := encodeFn(mockIt)
