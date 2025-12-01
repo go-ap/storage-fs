@@ -9,11 +9,10 @@ environment:
   GO111MODULE: 'on'
 tasks:
   - tests: |
-      cd storage-fs && make test
-  - conformance-suite: |
       cd storage-fs
-      go test -tags conformance -count=1 -json . | go run github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt -showteststatus
+      make test
   - coverage: |
       cd storage-fs
       git switch -C master origin/master
-      go run github.com/mattn/goveralls@latest -tags conformance -flagname unit-tests -service=${CI_NAME} -repotokenfile ~/.coveralls.tok
+      make coverage
+      go run github.com/mattn/goveralls@latest -flagname unit-tests -service=${CI_NAME} -coverprofile storage-fs.coverprofile -repotokenfile ~/.coveralls.tok
