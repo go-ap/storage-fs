@@ -384,32 +384,6 @@ func isHiddenCollectionKey(p string) bool {
 	return filters.HiddenCollections.Contains(lst)
 }
 
-// createCollections
-func createCollections(r *repo, it vocab.Item) error {
-	if vocab.IsNil(it) || !it.IsObject() {
-		return nil
-	}
-	if vocab.ActorTypes.Contains(it.GetType()) {
-		_ = vocab.OnActor(it, func(p *vocab.Actor) error {
-			p.Inbox, _ = createCollectionInPath(r, p.Inbox, p)
-			p.Outbox, _ = createCollectionInPath(r, p.Outbox, p)
-			p.Followers, _ = createCollectionInPath(r, p.Followers, p)
-			p.Following, _ = createCollectionInPath(r, p.Following, p)
-			p.Liked, _ = createCollectionInPath(r, p.Liked, p)
-			// NOTE(marius): shadow creating hidden collections for Blocked and Ignored items
-			_, _ = createCollectionInPath(r, filters.BlockedType.Of(p), p)
-			_, _ = createCollectionInPath(r, filters.IgnoredType.Of(p), p)
-			return nil
-		})
-	}
-	return vocab.OnObject(it, func(o *vocab.Object) error {
-		o.Replies, _ = createCollectionInPath(r, o.Replies, o)
-		o.Likes, _ = createCollectionInPath(r, o.Likes, o)
-		o.Shares, _ = createCollectionInPath(r, o.Shares, o)
-		return nil
-	})
-}
-
 const (
 	objectKey   = "__raw"
 	metaDataKey = "__meta_data"
@@ -421,23 +395,6 @@ func getMetadataKey(p string) string {
 
 func getObjectKey(p string) string {
 	return path.Join(p, objectKey)
-}
-
-func createCollectionInPath(r *repo, it, owner vocab.Item) (vocab.Item, error) {
-	if vocab.IsNil(it) {
-		return nil, nil
-	}
-	itPath := iriPath(it.GetLink())
-
-	colObject, err := r.loadItemFromPath(getObjectKey(itPath))
-	if colObject == nil {
-		it, err = createCollection(r, it.GetLink(), owner)
-	}
-	if err != nil {
-		return nil, errors.Annotatef(err, "saving collection object is not done")
-	}
-
-	return it.GetLink(), asPathErr(mkDirIfNotExists(r.root, itPath))
 }
 
 func (r *repo) removeFromCache(iri vocab.IRI) {
@@ -477,9 +434,10 @@ func deleteItem(r *repo, it vocab.Item) error {
 }
 
 func save(r *repo, it vocab.Item) (vocab.Item, error) {
-	if err := createCollections(r, it); err != nil {
-		return it, errors.Annotatef(err, "could not create object's collections")
-	}
+	// NOTE(marius): we have this in the processor
+	//if err := createCollections(r, it); err != nil {
+	//	return it, errors.Annotatef(err, "could not create object's collections")
+	//}
 	_ = r.loadIndex()
 
 	defer func() {
@@ -865,7 +823,7 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 
 			ob, err := r.loadItemFromPath(getObjectKey(p))
 			if err != nil {
-				r.logger.Warnf("unable to load %s: %+s", p, err)
+				//r.logger.Warnf("unable to load %s: %+s", p, err)
 				return nil
 			}
 			if !vocab.IsNil(ob) {
@@ -874,7 +832,7 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 			return nil
 		})
 		if err != nil {
-			r.logger.Errorf("unable to load collection items: %+s", err)
+			//r.logger.Errorf("unable to load collection items: %+s", err)
 			return it, err
 		}
 	}

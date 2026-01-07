@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"git.sr.ht/~mariusor/lw"
@@ -127,47 +126,6 @@ func expectedCol(id vocab.IRI) *vocab.OrderedCollection {
 		First:        vocab.IRI("https://example.com/replies?" + filters.ToValues(filters.WithMaxCount(filters.MaxItems)).Encode()),
 		Published:    time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 		CC:           vocab.ItemCollection{vocab.PublicNS},
-	}
-}
-
-func Test_createCollection(t *testing.T) {
-	tests := []struct {
-		name     string
-		owner    vocab.Item
-		iri      vocab.IRI
-		expected vocab.CollectionInterface
-		wantErr  bool
-	}{
-		{
-			name:     "example.com/replies",
-			owner:    &vocab.Actor{ID: "https://example.com"},
-			iri:      "https://example.com/replies",
-			expected: expectedCol("https://example.com/replies"),
-			wantErr:  false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				r := mockRepo(t, fields{path: t.TempDir()}, withOpenRoot)
-				defer r.Close()
-
-				col, err := createCollectionInPath(r, tt.iri, tt.owner)
-				if (err != nil) != tt.wantErr {
-					t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
-				}
-				if !vocab.ItemsEqual(col, tt.expected.GetLink()) {
-					t.Errorf("Returned collection is not equal to expected %v: %v", tt.expected, col)
-				}
-				saved, err := r.Load(tt.iri)
-				if err != nil {
-					t.Errorf("Unable to load collection at IRI %q: %s", tt.iri, err)
-				}
-				if !vocab.ItemsEqual(tt.expected, saved) {
-					t.Errorf("Saved collection is not equal to expected %s", cmp.Diff(tt.expected, saved))
-				}
-			})
-		})
 	}
 }
 
@@ -594,7 +552,7 @@ func Test_repo_Load(t *testing.T) {
 		//	want: wantsRootOutboxPage(2, filters.WithMaxCount(2)),
 		//},
 		{
-			name: "inbox?type=Create",
+			name: "outbox?type=Create",
 			args: args{
 				iri: rootOutboxIRI,
 				fil: filters.Checks{
@@ -675,7 +633,7 @@ func Test_repo_Load(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := r.Load(tt.args.iri, tt.args.fil...)
-			if !errors.Is(err, tt.wantErr) {
+			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
 				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
