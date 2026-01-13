@@ -266,7 +266,7 @@ func withGeneratedRoot(root vocab.Item) initFn {
 		if _, err := r.Save(root); err != nil {
 			t.Errorf("unable to save root service: %s", err)
 		}
-		if _, err := r.Save(mockCollection(root, vocab.Outbox)); err != nil {
+		if _, err := r.Create(mockCollection(root, vocab.Outbox)); err != nil {
 			t.Errorf("unable to save root service's outbox: %s", err)
 		}
 		return r
@@ -306,7 +306,7 @@ func createActivity(ob vocab.Item, attrTo vocab.Item) *vocab.Activity {
 	return act
 }
 
-func mockCollection(parent vocab.Item, colType vocab.CollectionPath) vocab.Item {
+func mockCollection(parent vocab.Item, colType vocab.CollectionPath) vocab.CollectionInterface {
 	return &vocab.OrderedCollection{
 		ID:           colType.Of(parent).GetLink(),
 		Type:         vocab.OrderedCollectionType,
