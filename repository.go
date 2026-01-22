@@ -856,7 +856,7 @@ func derefPropertiesForCurrentPage(r *repo, it vocab.Item, fil ...filters.Check)
 		return nil
 	})
 
-	return filters.PaginateCollection(it, fil...)
+	return it
 }
 
 func dereferencePropertiesByType(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item {
