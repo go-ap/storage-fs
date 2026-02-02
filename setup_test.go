@@ -395,10 +395,21 @@ func setId(base vocab.IRI) func(ob *vocab.Object) error {
 		if latestId, ok := idMap.Load(typ); ok {
 			id = latestId.(int) + 1
 		}
-		ob.ID = base.AddPath(strings.ToLower(string(typ))).AddPath(strconv.Itoa(id))
+
+		ob.ID = base.AddPath(strings.ToLower(typeAsString(typ))).AddPath(strconv.Itoa(id))
 		idMap.Store(typ, id)
 		return nil
 	}
+}
+
+func typeAsString(typ vocab.Typer) string {
+	if tt, ok := typ.(vocab.ActivityVocabularyType); ok {
+		return string(tt)
+	}
+	if tt, ok := typ.(vocab.ActivityVocabularyTypes); ok && len(tt) > 0 {
+		return string(tt[0])
+	}
+	return "unknown"
 }
 
 func filter(items vocab.ItemCollection, fil ...filters.Check) vocab.ItemCollection {

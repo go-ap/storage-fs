@@ -154,7 +154,8 @@ func (r *repo) RemoveFrom(colIRI vocab.IRI, items ...vocab.Item) error {
 		}
 	}
 
-	if orderedCollectionTypes.Contains(col.GetType()) {
+	typ := col.GetType()
+	if orderedCollectionTypes.Match(typ) {
 		err = vocab.OnOrderedCollection(col, func(c *vocab.OrderedCollection) error {
 			if c.TotalItems <= uint(len(items)) {
 				c.TotalItems = 0
@@ -164,7 +165,7 @@ func (r *repo) RemoveFrom(colIRI vocab.IRI, items ...vocab.Item) error {
 			c.OrderedItems = nil
 			return nil
 		})
-	} else if collectionTypes.Contains(col.GetType()) {
+	} else if collectionTypes.Match(typ) {
 		err = vocab.OnCollection(col, func(c *vocab.Collection) error {
 			if c.TotalItems <= uint(len(items)) {
 				c.TotalItems = 0
@@ -321,13 +322,14 @@ func (r *repo) AddTo(colIRI vocab.IRI, items ...vocab.Item) error {
 		}
 	}
 
-	if orderedCollectionTypes.Contains(col.GetType()) {
+	typ := col.GetType()
+	if orderedCollectionTypes.Match(typ) {
 		err = vocab.OnOrderedCollection(col, func(c *vocab.OrderedCollection) error {
 			c.TotalItems += uint(len(items))
 			c.OrderedItems = nil
 			return nil
 		})
-	} else if collectionTypes.Contains(col.GetType()) {
+	} else if collectionTypes.Match(typ) {
 		err = vocab.OnCollection(col, func(c *vocab.Collection) error {
 			c.TotalItems += uint(len(items))
 			c.Items = nil
@@ -837,7 +839,7 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 		}
 	}
 
-	if orderedCollectionTypes.Contains(it.GetType()) {
+	if orderedCollectionTypes.Match(it.GetType()) {
 		err = vocab.OnOrderedCollection(it, buildOrderedCollection(items))
 	} else {
 		err = vocab.OnCollection(it, buildCollection(items))
@@ -874,19 +876,19 @@ func dereferencePropertiesByType(r *repo, it vocab.Item, fil ...filters.Check) v
 	typ := it.GetType()
 	// NOTE(marius): this can probably expedite filtering if we early exit when we fail to load the
 	// properties that need to be loaded for sub-filters.
-	if vocab.IntransitiveActivityTypes.Contains(typ) /*&& len(intransitiveChecks) > 0*/ {
+	if vocab.IntransitiveActivityTypes.Match(typ) /*&& len(intransitiveChecks) > 0*/ {
 		checks := append(intransitiveChecks, authorizedChecks...)
 		_ = vocab.OnIntransitiveActivity(it, loadFilteredPropsForIntransitiveActivity(r, checks...))
 	}
-	if vocab.ActivityTypes.Contains(typ) /*&& len(activityChecks) > 0*/ {
+	if vocab.ActivityTypes.Match(typ) /*&& len(activityChecks) > 0*/ {
 		checks := append(activityChecks, authorizedChecks...)
 		_ = vocab.OnActivity(it, loadFilteredPropsForActivity(r, checks...))
 	}
-	if vocab.ActorTypes.Contains(typ) /*&& len(actorChecks) > 0*/ {
+	if vocab.ActorTypes.Match(typ) /*&& len(actorChecks) > 0*/ {
 		checks := append(actorChecks, authorizedChecks...)
 		_ = vocab.OnActor(it, loadFilteredPropsForActor(r, checks...))
 	}
-	if vocab.ObjectTypes.Contains(typ) /*&& len(objectChecks) > 0*/ {
+	if vocab.ObjectTypes.Match(typ) /*&& len(objectChecks) > 0*/ {
 		checks := append(objectChecks, authorizedChecks...)
 		_ = vocab.OnObject(it, loadFilteredPropsForObject(r, checks...))
 	}

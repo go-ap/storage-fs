@@ -232,19 +232,20 @@ func (r *repo) removeFromIndex(it vocab.Item, path string) error {
 	}
 	in := r.index
 	errs := make([]error, 0)
+	typ := it.GetType()
 	switch {
-	case vocab.ActivityTypes.Contains(it.GetType()):
+	case vocab.ActivityTypes.Match(typ):
 		if iact, ok := in.all[index.ByActor]; ok {
 			_ = iact.Add(it)
 		}
 		if iob, ok := in.all[index.ByObject]; ok {
 			_ = iob.Add(it)
 		}
-	case vocab.IntransitiveActivityTypes.Contains(it.GetType()):
+	case vocab.IntransitiveActivityTypes.Match(typ):
 		if iact, ok := in.all[index.ByActor]; ok {
 			_ = iact.Add(it)
 		}
-	case vocab.ActorTypes.Contains(it.GetType()):
+	case vocab.ActorTypes.Match(typ):
 		if ipu, ok := in.all[index.ByPreferredUsername]; ok {
 			_ = ipu.Add(it)
 		}
@@ -284,19 +285,20 @@ func (r *repo) addToIndex(it vocab.Item, path string) error {
 	in.w.Lock()
 	defer in.w.Unlock()
 
+	typ := it.GetType()
 	switch {
-	case vocab.ActivityTypes.Contains(it.GetType()):
+	case vocab.ActivityTypes.Match(typ):
 		if iact, ok := in.all[index.ByActor]; ok {
 			_ = iact.Add(it)
 		}
 		if iob, ok := in.all[index.ByObject]; ok {
 			_ = iob.Add(it)
 		}
-	case vocab.IntransitiveActivityTypes.Contains(it.GetType()):
+	case vocab.IntransitiveActivityTypes.Match(typ):
 		if iact, ok := in.all[index.ByActor]; ok {
 			_ = iact.Add(it)
 		}
-	case vocab.ActorTypes.Contains(it.GetType()):
+	case vocab.ActorTypes.Match(typ):
 		if ipu, ok := in.all[index.ByPreferredUsername]; ok {
 			_ = ipu.Add(it)
 		}
