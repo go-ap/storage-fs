@@ -680,6 +680,13 @@ func Test_repo_SaveAuthorize(t *testing.T) {
 			auth:     mockAuth("test-code123", defaultClient),
 			wantErr:  nil,
 		},
+		{
+			name:     "save mock auth with PKCE",
+			path:     t.TempDir(),
+			setupFns: []initFn{withOpenRoot, withClient},
+			auth:     mockAuthWithCodeChallenge("test-code123", defaultClient, "S256", "0000000000000000000000000000000000000000123"),
+			wantErr:  nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

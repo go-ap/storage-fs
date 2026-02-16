@@ -36,14 +36,16 @@ type cl struct {
 }
 
 type auth struct {
-	Client      cl
-	Code        string
-	ExpiresIn   time.Duration
-	Scope       string
-	RedirectURI string
-	State       string
-	CreatedAt   time.Time
-	UserData    vocab.IRI
+	Client              cl
+	Code                string
+	ExpiresIn           time.Duration
+	Scope               string
+	RedirectURI         string
+	State               string
+	CreatedAt           time.Time
+	UserData            vocab.IRI
+	CodeChallenge       string
+	CodeChallengeMethod string
 }
 
 type acc struct {
@@ -304,6 +306,8 @@ func (r *repo) loadAuthorizeFromPath(authPath string) (*osin.AuthorizeData, erro
 		data.State = a.State
 		data.CreatedAt = a.CreatedAt
 		data.UserData = a.UserData
+		data.CodeChallengeMethod = a.CodeChallengeMethod
+		data.CodeChallenge = a.CodeChallenge
 
 		if data.ExpireAt().Before(time.Now().UTC()) {
 			err := errors.Errorf("Token expired at %s.", data.ExpireAt().String())
