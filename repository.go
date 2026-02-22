@@ -795,8 +795,6 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 		return nil
 	})
 
-	colDirPath := filepath.Dir(itPath)
-
 	items, _ := r.searchIndex(it, fil...)
 	if len(items) == 0 {
 		// NOTE(marius): we load items the hard way if the index search resulted no hits, because we
@@ -805,36 +803,9 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 			items = make(vocab.ItemCollection, 0, totalItems)
 		}
 
-		err = fs.WalkDir(r.root.FS(), colDirPath, func(p string, info os.DirEntry, err error) error {
-			if err != nil && os.IsNotExist(err) {
-				if isStorageCollectionKey(p) {
-					return errors.NewNotFound(asPathErr(err), "not found")
-				}
-				return nil
-			}
+		colDirPath := filepath.Dir(itPath)
 
-			dir := p
-			diff := strings.TrimPrefix(dir, colDirPath)
-			if strings.Count(diff, "/") != 1 {
-				// NOTE(marius): when encountering the raw file that is deeper than the first level under the collection path, we skip
-				return nil
-			}
-			if fn := filepath.Base(p); fn == objectKey || fn == metaDataKey || fn == _indexDirName {
-				return nil
-			}
-
-			ob, err := r.loadItemFromPath(getObjectKey(p))
-			if err != nil {
-				//r.logger.Warnf("unable to load %s: %+s", p, err)
-				return nil
-			}
-			if !vocab.IsNil(ob) {
-				items = append(items, ob)
-			}
-			return nil
-		})
-		if err != nil {
-			//r.logger.Errorf("unable to load collection items: %+s", err)
+		if err = fs.WalkDir(r.root.FS(), colDirPath, loadItemsFromPath(r, colDirPath, &items, fil...)); err != nil {
 			return it, err
 		}
 	}
@@ -846,6 +817,37 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 	}
 
 	return derefPropertiesForCurrentPage(r, it, fil...), err
+}
+
+func loadItemsFromPath(r *repo, colDirPath string, items *vocab.ItemCollection, fil ...filters.Check) fs.WalkDirFunc {
+	return func(p string, info os.DirEntry, err error) error {
+		if err != nil && os.IsNotExist(err) {
+			if isStorageCollectionKey(p) {
+				return errors.NewNotFound(asPathErr(err), "not found")
+			}
+			return nil
+		}
+
+		dir := p
+		diff := strings.TrimPrefix(dir, colDirPath)
+		if strings.Count(diff, "/") != 1 {
+			// NOTE(marius): when encountering the raw file that is deeper than the first level under the collection path, we skip
+			return nil
+		}
+		if fn := filepath.Base(p); fn == objectKey || fn == metaDataKey || fn == _indexDirName {
+			return nil
+		}
+
+		ob, err := r.loadItemFromPath(getObjectKey(p), fil...)
+		if err != nil {
+			//r.logger.Warnf("unable to load %s: %+s", p, err)
+			return nil
+		}
+		if !vocab.IsNil(ob) {
+			*items = append(*items, ob)
+		}
+		return nil
+	}
 }
 
 func derefPropertiesForCurrentPage(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item {
