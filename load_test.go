@@ -85,7 +85,7 @@ var _ = func() error {
 	_ = os.RemoveAll(tempDir)
 
 	_ = os.MkdirAll(tempDir, defaultDirPerm)
-	_, _ = setup(Config{Path: tempDir, UseIndex: true, CacheEnable: true}, count)
+	_, _ = setup(Config{Path: tempDir, EnableIndex: true, EnableCache: true}, count)
 
 	fmt.Printf("created temp dir in %s %s\n", time.Now().Sub(st), tempDir)
 
@@ -97,7 +97,7 @@ const count = 2000
 var checks = filters.Checks{}
 
 func Benchmark_Load_All(b *testing.B) {
-	st, err := New(Config{Path: tempDir, NoFilterRaw: false, UseIndex: true, CacheEnable: true})
+	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: true, EnableIndex: true, EnableCache: true})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
 	}
@@ -112,7 +112,7 @@ func Benchmark_Load_All(b *testing.B) {
 }
 
 func Benchmark_Load_None(b *testing.B) {
-	st, err := New(Config{Path: tempDir, NoFilterRaw: true, UseIndex: false, CacheEnable: false})
+	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: false, EnableCache: false})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
 	}
@@ -127,7 +127,7 @@ func Benchmark_Load_None(b *testing.B) {
 }
 
 func Benchmark_Load_wIndex(b *testing.B) {
-	st, err := New(Config{Path: tempDir, NoFilterRaw: true, UseIndex: true, CacheEnable: false})
+	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: true, EnableCache: false})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
 	}
@@ -141,7 +141,7 @@ func Benchmark_Load_wIndex(b *testing.B) {
 }
 
 func Benchmark_Load_wCache(b *testing.B) {
-	st, err := New(Config{Path: tempDir, NoFilterRaw: true, UseIndex: false, CacheEnable: true})
+	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: false, EnableCache: true})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
 	}
@@ -156,7 +156,7 @@ func Benchmark_Load_wCache(b *testing.B) {
 }
 
 func Benchmark_Load_wQuamina(b *testing.B) {
-	st, err := New(Config{Path: tempDir, NoFilterRaw: true, UseIndex: false, CacheEnable: false})
+	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: false, EnableCache: false})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
 	}

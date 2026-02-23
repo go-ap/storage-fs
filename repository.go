@@ -30,11 +30,11 @@ var emptyLogger = lw.Dev()
 
 type ItemFn func(vocab.Item) error
 type Config struct {
-	Path        string
-	CacheEnable bool
-	UseIndex    bool
-	NoFilterRaw bool
-	Logger      lw.Logger
+	Path                     string
+	EnableCache              bool
+	EnableIndex              bool
+	EnableOptimizedFiltering bool
+	Logger                   lw.Logger
 }
 
 var errMissingPath = errors.Newf("missing path in config")
@@ -56,14 +56,16 @@ func New(c Config) (*repo, error) {
 	b := repo{
 		path:           p,
 		logger:         emptyLogger,
-		filterRawItems: !c.NoFilterRaw,
-		cache:          cache.New(c.CacheEnable),
+		filterRawItems: c.EnableOptimizedFiltering,
 	}
 	if c.Logger != nil {
 		b.logger = c.Logger
 	}
-	if c.UseIndex {
+	if c.EnableIndex {
 		b.index = newBitmap()
+	}
+	if c.EnableCache {
+		b.cache = cache.New(true)
 	}
 	return &b, nil
 }
