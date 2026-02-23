@@ -7,7 +7,7 @@ MAKEFLAGS += --no-builtin-rules
 
 GO ?= go
 TEST := $(GO) test
-TEST_FLAGS ?= -v -tags conformance
+TEST_FLAGS ?= -tags conformance
 TEST_TARGET ?= .
 GO111MODULE = on
 PROJECT_NAME := $(shell basename $(PWD))
@@ -24,6 +24,9 @@ test: go.sum clean
 	$(TEST) $(TEST_FLAGS) -cover $(TEST_TARGET) -json >> tests.json
 	go run github.com/mfridman/tparse@latest -file tests.json
 	@$(RM) ./tests.json
+
+bench: go.sum clean
+	$(TEST) $(TEST_FLAGS) -test.bench=. -test.run=nomatchingtests -cover $(TEST_TARGET)
 
 coverage: go.sum clean
 	@mkdir ./_coverage

@@ -11,6 +11,9 @@ tasks:
   - tests: |
       cd storage-fs
       make test
+  - benchmarks: |
+      cd storage-fs
+      make bench
   - coverage: |
       cd storage-fs
       git switch -C master origin/master

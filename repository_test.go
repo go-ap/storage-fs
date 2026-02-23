@@ -694,7 +694,12 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 		{
 			name: "root iri gives us the root",
 			args: args{iri: "https://example.com"},
-			want: vocab.Actor{Type: vocab.ApplicationType, ID: "https://example.com"},
+			want: &vocab.Actor{
+				ID:    "https://example.com",
+				Type:  vocab.ApplicationType,
+				Name:  vocab.DefaultNaturalLanguage("example.com"),
+				Inbox: vocab.IRI("https://example.com/inbox"),
+			},
 		},
 		{
 			name:    "invalid iri gives 404",
@@ -705,7 +710,7 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 		{
 			name: "full inbox",
 			args: args{iri: "https://example.com/inbox"},
-			want: vocab.OrderedCollection{
+			want: &vocab.OrderedCollection{
 				ID:           "https://example.com/inbox",
 				Type:         vocab.OrderedCollectionType,
 				OrderedItems: inbox,
@@ -730,19 +735,15 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 					filters.HasType(vocab.CreateType),
 				},
 			},
-			want: vocab.OrderedCollection{
+			want: &vocab.OrderedCollection{
 				ID:    "https://example.com/inbox",
 				Type:  vocab.OrderedCollectionType,
 				First: vocab.IRI("https://example.com/inbox?maxItems=100"),
 				OrderedItems: vocab.ItemCollection{
 					&vocab.Activity{
-						ID:   "https://example.com/inbox/2",
-						Type: vocab.CreateType,
-						Actor: &vocab.Actor{
-							ID:                "https://example.com/Ross",
-							Type:              vocab.PersonType,
-							PreferredUsername: vocab.DefaultNaturalLanguage("Ross"),
-						},
+						ID:    "https://example.com/inbox/2",
+						Type:  vocab.CreateType,
+						Actor: vocab.IRI("https://example.com/Ross"),
 						Object: &vocab.Object{
 							ID:      "https://example.com/inbox/1",
 							Type:    vocab.ArticleType,
@@ -775,10 +776,10 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 				iri: "https://example.com/inbox",
 				fil: filters.Checks{
 					filters.HasType(vocab.CreateType),
-					filters.Actor(filters.NameIs("Hank")),
+					filters.Actor(filters.PreferredUsernameIs("Hank")),
 				},
 			},
-			want: vocab.OrderedCollection{
+			want: &vocab.OrderedCollection{
 				ID:    "https://example.com/inbox",
 				Type:  vocab.OrderedCollectionType,
 				First: vocab.IRI("https://example.com/inbox?maxItems=100"),
@@ -810,7 +811,7 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 					filters.HasType(vocab.ArticleType),
 				},
 			},
-			want: vocab.OrderedCollection{
+			want: &vocab.OrderedCollection{
 				ID:    "https://example.com/inbox",
 				Type:  vocab.OrderedCollectionType,
 				First: vocab.IRI("https://example.com/inbox?maxItems=100"),
@@ -840,7 +841,7 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 		{
 			name: "inbox::2",
 			args: args{iri: "https://example.com/inbox/2"},
-			want: vocab.Activity{
+			want: &vocab.Activity{
 				ID:   "https://example.com/inbox/2",
 				Type: vocab.CreateType,
 				Actor: &vocab.Actor{
@@ -864,7 +865,7 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 				return
 			}
 			if !vocab.ItemsEqual(got, tt.want) {
-				t.Errorf("Load() got = %v, want %v", got, tt.want)
+				t.Errorf("Load() got = %s", cmp.Diff(tt.want, got))
 			}
 		})
 	}
