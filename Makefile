@@ -21,12 +21,12 @@ go.sum:
 
 test: go.sum clean
 	@touch tests.json
-	$(TEST) $(TEST_FLAGS) -cover $(TEST_TARGET) -json >> tests.json
+	$(TEST) $(TEST_FLAGS) -test.bench=xxxx -cover $(TEST_TARGET) -json >> tests.json
 	go run github.com/mfridman/tparse@latest -file tests.json
 	@$(RM) ./tests.json
 
 bench: go.sum clean
-	$(TEST) $(TEST_FLAGS) -test.bench=. -test.run=nomatchingtests -cover $(TEST_TARGET)
+	$(TEST) $(TEST_FLAGS) -test.bench=. -test.run=xxxxx -cover $(TEST_TARGET)
 
 coverage: go.sum clean
 	@mkdir ./_coverage

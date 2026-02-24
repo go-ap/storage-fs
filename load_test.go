@@ -3,7 +3,7 @@ package fs
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,9 +24,8 @@ var collectionIRI = vocab.Inbox.Of(gen.Root).GetLink()
 var results = make(map[vocab.Typer]int)
 
 func populate(st *repo, count int) error {
-	oldSetter := gen.SetItemID
 	defer func() {
-		gen.SetItemID = oldSetter
+		gen.SetItemID = gen.DefaultSetter
 	}()
 	gen.SetItemID = setBenchId
 
@@ -82,9 +81,7 @@ func setup(conf Config, count int) (*repo, error) {
 	return st, nil
 }
 
-var tempDir = filepath.Join(os.TempDir(), "storage-fs-bench")
-
-var _ = func() error {
+var _init = sync.OnceFunc(func() {
 	st := time.Now()
 	_ = os.RemoveAll(tempDir)
 
@@ -92,15 +89,14 @@ var _ = func() error {
 	_, _ = setup(Config{Path: tempDir, EnableIndex: true, EnableCache: true}, count)
 
 	fmt.Printf("created temp dir in %s %s\n", time.Now().Sub(st), tempDir)
-
-	return nil
-}()
+})
 
 const count = 2000
 
 var checks = filters.Checks{}
 
 func Benchmark_Load_All(b *testing.B) {
+	_init()
 	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: true, EnableIndex: true, EnableCache: true})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
@@ -116,6 +112,7 @@ func Benchmark_Load_All(b *testing.B) {
 }
 
 func Benchmark_Load_None(b *testing.B) {
+	_init()
 	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: false, EnableCache: false})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
@@ -131,6 +128,7 @@ func Benchmark_Load_None(b *testing.B) {
 }
 
 func Benchmark_Load_wIndex(b *testing.B) {
+	_init()
 	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: true, EnableCache: false})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
@@ -145,6 +143,7 @@ func Benchmark_Load_wIndex(b *testing.B) {
 }
 
 func Benchmark_Load_wCache(b *testing.B) {
+	_init()
 	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: false, EnableCache: true})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
@@ -160,6 +159,7 @@ func Benchmark_Load_wCache(b *testing.B) {
 }
 
 func Benchmark_Load_wQuamina(b *testing.B) {
+	_init()
 	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: false, EnableCache: false})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
