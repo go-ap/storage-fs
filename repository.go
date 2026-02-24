@@ -1011,19 +1011,18 @@ func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, err
 	itPath := iriPath(iri)
 	if isStorageCollectionKey(itPath) {
 		return r.loadCollectionFromPath(getObjectKey(itPath), iri, fil...)
-	} else {
-		if len(fil) == 0 {
-			fil = filters.Checks{filters.SameID(iri)}
-		}
-		if it, err = r.loadItemFromPath(getObjectKey(itPath), fil...); err != nil {
-			return nil, errors.NewNotFound(asPathErr(err), "not found")
-		}
-		if vocab.IsNil(it) {
-			return nil, errors.NewNotFound(asPathErr(err), "not found")
-		}
-		if vocab.IsIRI(it) {
-			return nil, errors.NewNotFound(asPathErr(err), "not found")
-		}
+	}
+	if len(fil) == 0 {
+		fil = filters.Checks{filters.SameID(iri)}
+	}
+	if it, err = r.loadItemFromPath(getObjectKey(itPath), fil...); err != nil {
+		return nil, errors.NewNotFound(asPathErr(err), "not found")
+	}
+	if vocab.IsNil(it) {
+		return nil, errors.NewNotFound(asPathErr(err), "not found")
+	}
+	if vocab.IsIRI(it) {
+		return nil, errors.NewNotFound(asPathErr(err), "not found")
 	}
 	return it, err
 }

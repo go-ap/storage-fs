@@ -24,6 +24,10 @@ var collectionIRI = vocab.Inbox.Of(gen.Root).GetLink()
 var results = make(map[vocab.Typer]int)
 
 func populate(st *repo, count int) error {
+	oldSetter := gen.SetItemID
+	defer func() {
+		gen.SetItemID = oldSetter
+	}()
 	gen.SetItemID = setBenchId
 
 	if _, err := st.Save(gen.Root); err != nil {
