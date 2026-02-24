@@ -855,6 +855,9 @@ func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollectio
 		var it vocab.Item
 		raw, err := loadRaw(r.root, getObjectKey(p))
 		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
 			return err
 		}
 		if filters.MatchRaw(ff, raw) {
