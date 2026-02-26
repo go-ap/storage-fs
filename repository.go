@@ -848,7 +848,7 @@ func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollectio
 			// NOTE(marius): when encountering the raw file that is deeper than the first level under the collection path, we skip
 			return nil
 		}
-		if fn := filepath.Base(p); fn == objectKey || fn == metaDataKey || fn == _indexDirName {
+		if fn := filepath.Base(p); fn == objectKey || fn == metaDataKey || fn == _indexDirName || !info.IsDir() {
 			return nil
 		}
 
@@ -860,9 +860,8 @@ func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollectio
 			}
 			return err
 		}
-		if filters.MatchRaw(ff, raw) {
-			it, err = loadFromRaw(raw)
-			if !vocab.IsNil(it) {
+		if filters.MatchRaw(filters.TopLevelChecks(ff...), raw) {
+			if it, _ = loadFromRaw(raw); !vocab.IsNil(it) {
 				*items = append(*items, it)
 			}
 		}
