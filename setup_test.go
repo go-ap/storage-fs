@@ -83,7 +83,7 @@ func mockRepo(t *testing.T, f fields, initFns ...initFn) *repo {
 		root:           f.root,
 		index:          f.index,
 		cache:          f.cache,
-		filterRawItems: true,
+		filterRawItems: false,
 		logger:         lw.Dev(lw.SetOutput(t.Output()), lw.SetLevel(lw.InfoLevel)),
 	}
 
