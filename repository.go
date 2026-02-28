@@ -528,7 +528,7 @@ func loadRaw(root *os.Root, itPath string) ([]byte, error) {
 	return io.ReadAll(fi)
 }
 
-func loadFromRaw(raw []byte) (vocab.Item, error) {
+func itemFromRaw(raw []byte) (vocab.Item, error) {
 	if raw == nil || len(raw) == 0 {
 		// TODO(marius): log this instead of stopping the iteration and returning an error
 		return nil, errors.Errorf("empty raw item")
@@ -715,7 +715,7 @@ func loadRawFromPath(root *os.Root, p string) (vocab.Item, error) {
 	if raw == nil {
 		return nil, nil
 	}
-	it, err := loadFromRaw(raw)
+	it, err := itemFromRaw(raw)
 	if err != nil {
 		return nil, err
 	}
@@ -834,6 +834,7 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 }
 
 func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollection, ff ...filters.Check) fs.WalkDirFunc {
+	matcherFn := filters.RawMatcher(ff)
 	return func(p string, info os.DirEntry, err error) error {
 		if err != nil && os.IsNotExist(err) {
 			if isStorageCollectionKey(p) {
@@ -848,20 +849,17 @@ func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollectio
 			// NOTE(marius): when encountering the raw file that is deeper than the first level under the collection path, we skip
 			return nil
 		}
-		if fn := filepath.Base(p); fn == objectKey || fn == metaDataKey || fn == _indexDirName || !info.IsDir() {
+		if fn := filepath.Base(p); fn == objectKey || fn == metaDataKey || fn == _indexDirName {
 			return nil
 		}
 
 		var it vocab.Item
 		raw, err := loadRaw(r.root, getObjectKey(p))
 		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return err
+			return nil
 		}
-		if filters.MatchRaw(filters.TopLevelChecks(ff...), raw) {
-			if it, _ = loadFromRaw(raw); !vocab.IsNil(it) {
+		if matcherFn(raw) {
+			if it, _ = itemFromRaw(raw); !vocab.IsNil(it) {
 				*items = append(*items, it)
 			}
 		}

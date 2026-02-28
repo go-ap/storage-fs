@@ -11,7 +11,7 @@ import (
 
 func initStorage(t *testing.T) conformance.ActivityPubStorage {
 	l := lw.Dev(lw.SetOutput(t.Output()))
-	storage, err := New(Config{Path: t.TempDir(), Logger: l, EnableOptimizedFiltering: false})
+	storage, err := New(Config{Path: t.TempDir(), Logger: l, EnableOptimizedFiltering: true})
 	if err != nil {
 		t.Fatalf("unable to initialize storage: %s", err)
 	}
