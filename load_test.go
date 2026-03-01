@@ -93,7 +93,7 @@ var _init = sync.OnceFunc(func() {
 
 const count = 2000
 
-var checks = filters.Checks{}
+var checks = filters.Checks{filters.HasType(vocab.NoteType, vocab.ArticleType)}
 
 func Benchmark_Load_All(b *testing.B) {
 	_init()
