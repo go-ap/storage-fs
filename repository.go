@@ -858,10 +858,11 @@ func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollectio
 		if err != nil {
 			return nil
 		}
-		if matcherFn(raw) {
-			if it, _ = itemFromRaw(raw); !vocab.IsNil(it) {
-				*items = append(*items, it)
-			}
+		if !matcherFn(raw) {
+			return nil
+		}
+		if it, _ = itemFromRaw(raw); !vocab.IsNil(it) {
+			*items = append(*items, it)
 		}
 		return nil
 	}
