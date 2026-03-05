@@ -97,7 +97,7 @@ var checks = filters.Checks{filters.HasType(vocab.NoteType, vocab.ArticleType)}
 
 func Benchmark_Load_All(b *testing.B) {
 	_init()
-	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: true, EnableIndex: true, EnableCache: true})
+	st, err := New(Config{Path: tempDir, EnableIndex: true, EnableCache: true})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
 	}
@@ -113,7 +113,7 @@ func Benchmark_Load_All(b *testing.B) {
 
 func Benchmark_Load_None(b *testing.B) {
 	_init()
-	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: false, EnableCache: false})
+	st, err := New(Config{Path: tempDir, EnableIndex: false, EnableCache: false})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
 	}
@@ -129,7 +129,7 @@ func Benchmark_Load_None(b *testing.B) {
 
 func Benchmark_Load_wIndex(b *testing.B) {
 	_init()
-	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: true, EnableCache: false})
+	st, err := New(Config{Path: tempDir, EnableIndex: true, EnableCache: false})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
 	}
@@ -144,23 +144,7 @@ func Benchmark_Load_wIndex(b *testing.B) {
 
 func Benchmark_Load_wCache(b *testing.B) {
 	_init()
-	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: false, EnableCache: true})
-	if err != nil {
-		b.Fatalf("unable to initialize storage %s", err)
-	}
-	if err = st.Open(); err != nil {
-		b.Fatalf("unable to open storage %s", err)
-	}
-
-	b.ResetTimer()
-	for b.Loop() {
-		_, _ = st.Load(collectionIRI, checks...)
-	}
-}
-
-func Benchmark_Load_wQuamina(b *testing.B) {
-	_init()
-	st, err := New(Config{Path: tempDir, EnableOptimizedFiltering: false, EnableIndex: false, EnableCache: false})
+	st, err := New(Config{Path: tempDir, EnableIndex: false, EnableCache: true})
 	if err != nil {
 		b.Fatalf("unable to initialize storage %s", err)
 	}

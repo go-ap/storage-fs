@@ -30,11 +30,10 @@ var emptyLogger = lw.Dev()
 
 type ItemFn func(vocab.Item) error
 type Config struct {
-	Path                     string
-	EnableCache              bool
-	EnableIndex              bool
-	EnableOptimizedFiltering bool
-	Logger                   lw.Logger
+	Path        string
+	EnableCache bool
+	EnableIndex bool
+	Logger      lw.Logger
 }
 
 var errMissingPath = errors.Newf("missing path in config")
@@ -54,9 +53,8 @@ func New(c Config) (*repo, error) {
 	}
 
 	b := repo{
-		path:           p,
-		logger:         emptyLogger,
-		filterRawItems: c.EnableOptimizedFiltering,
+		path:   p,
+		logger: emptyLogger,
 	}
 	if c.Logger != nil {
 		b.logger = c.Logger
@@ -71,12 +69,11 @@ func New(c Config) (*repo, error) {
 }
 
 type repo struct {
-	path           string
-	root           *os.Root
-	index          *bitmaps
-	cache          cache.CanStore
-	filterRawItems bool
-	logger         lw.Logger
+	path   string
+	root   *os.Root
+	index  *bitmaps
+	cache  cache.CanStore
+	logger lw.Logger
 }
 
 // Open
@@ -811,23 +808,16 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 		colDirPath := filepath.Dir(itPath)
 
 		var fn fs.WalkDirFunc
-		if r.filterRawItems {
-			fn = loadWithRawFiltering(r, colDirPath, &items, fil...)
-		} else {
-			fn = loadItemsFromPath(r, colDirPath, &items, fil...)
-		}
+		fn = loadWithRawFiltering(r, colDirPath, &items, fil...)
 		if err = fs.WalkDir(r.root.FS(), colDirPath, fn); err != nil {
 			return it, err
-		}
-		if !r.filterRawItems && totalItems == 0 {
-			totalItems = uint(len(items))
 		}
 	}
 
 	if orderedCollectionTypes.Match(it.GetType()) {
-		err = vocab.OnOrderedCollection(it, buildOrderedCollection(totalItems, items))
+		err = vocab.OnOrderedCollection(it, buildOrderedCollection(items))
 	} else {
-		err = vocab.OnCollection(it, buildCollection(totalItems, items))
+		err = vocab.OnCollection(it, buildCollection(items))
 	}
 
 	return derefPropertiesForCurrentPage(r, it, fil...), err
@@ -863,36 +853,6 @@ func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollectio
 		}
 		if it, _ = itemFromRaw(raw); !vocab.IsNil(it) {
 			*items = append(*items, it)
-		}
-		return nil
-	}
-}
-
-func loadItemsFromPath(r *repo, colDirPath string, items *vocab.ItemCollection, fil ...filters.Check) fs.WalkDirFunc {
-	return func(p string, info os.DirEntry, err error) error {
-		if err != nil && os.IsNotExist(err) {
-			if isStorageCollectionKey(p) {
-				return errors.NewNotFound(asPathErr(err), "not found")
-			}
-			return nil
-		}
-
-		dir := p
-		diff := strings.TrimPrefix(dir, colDirPath)
-		if strings.Count(diff, "/") != 1 {
-			// NOTE(marius): when encountering the raw file that is deeper than the first level under the collection path, we skip
-			return nil
-		}
-		if fn := filepath.Base(p); fn == objectKey || fn == metaDataKey || fn == _indexDirName {
-			return nil
-		}
-
-		ob, err := r.loadItemFromPath(getObjectKey(p) /*, fil...*/)
-		if err != nil {
-			return nil
-		}
-		if !vocab.IsNil(ob) {
-			*items = append(*items, ob)
 		}
 		return nil
 	}
@@ -981,25 +941,19 @@ func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil
 	return items
 }
 
-func buildCollection(cnt uint, items vocab.ItemCollection) vocab.WithCollectionFn {
+func buildCollection(items vocab.ItemCollection) vocab.WithCollectionFn {
 	return func(col *vocab.Collection) error {
 		if len(items) > 0 {
 			col.Items = items
-		}
-		if cnt > 0 {
-			col.TotalItems = cnt
 		}
 		return nil
 	}
 }
 
-func buildOrderedCollection(cnt uint, items vocab.ItemCollection) vocab.WithOrderedCollectionFn {
+func buildOrderedCollection(items vocab.ItemCollection) vocab.WithOrderedCollectionFn {
 	return func(col *vocab.OrderedCollection) error {
 		if len(items) > 0 {
 			col.OrderedItems = items
-		}
-		if cnt > 0 {
-			col.TotalItems = cnt
 		}
 		return nil
 	}

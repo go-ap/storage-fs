@@ -575,18 +575,18 @@ func Test_repo_Load(t *testing.T) {
 				filters.Actor(filters.PreferredUsernameIs("Hank")),
 			),
 		},
-		//{
-		//	name: "outbox?type=Create&object.tag=-",
-		//	args: args{
-		//		iri: rootOutboxIRI,
-		//		fil: filters.Checks{
-		//			filters.Object(filters.Tag(filters.NilID)),
-		//		},
-		//	},
-		//	want: wantsRootOutbox(
-		//		filters.Object(filters.Tag(filters.NilID)),
-		//	),
-		//},
+		{
+			name: "outbox?type=Create&object.tag=-",
+			args: args{
+				iri: rootOutboxIRI,
+				fil: filters.Checks{
+					filters.Object(filters.Tag(filters.NilItem)),
+				},
+			},
+			want: wantsRootOutbox(
+				filters.Object(filters.Tag(filters.NilItem)),
+			),
+		},
 		{
 			name: "outbox?type=Create&object.tag.name=#test",
 			args: args{
@@ -855,7 +855,7 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &repo{path: mocksPath, filterRawItems: true}
+			r := &repo{path: mocksPath}
 			_ = r.Open()
 			defer r.Close()
 
