@@ -18,4 +18,4 @@ tasks:
       cd storage-fs
       git switch -C master origin/master
       make coverage
-      go run github.com/mattn/goveralls@latest -flagname unit-tests -service=${CI_NAME} -coverprofile storage-fs.coverprofile -repotokenfile ~/.coveralls.tok
+      go tool goveralls -flagname unit-tests -service=${CI_NAME} -coverprofile storage-fs.coverprofile -repotokenfile ~/.coveralls.tok

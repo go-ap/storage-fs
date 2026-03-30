@@ -408,7 +408,7 @@ func Test_repo_AddTo(t *testing.T) {
 			setupFns: []initFn{withOpenRoot, withOrderedCollectionHavingItems},
 			args: args{
 				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
+				it:     vocab.Object{ID: "https://example.com"},
 			},
 			wantErr: nil,
 		},
@@ -418,7 +418,7 @@ func Test_repo_AddTo(t *testing.T) {
 			setupFns: []initFn{withOpenRoot, withCollectionHavingItems},
 			args: args{
 				colIRI: "https://example.com/followers",
-				it:     vocab.IRI("https://example.com"),
+				it:     vocab.Object{ID: "https://example.com"},
 			},
 			wantErr: nil,
 		},
@@ -428,7 +428,7 @@ func Test_repo_AddTo(t *testing.T) {
 			setupFns: []initFn{withOpenRoot, withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
 			args: args{
 				colIRI: "https://example.com/~jdoe/blocked",
-				it:     vocab.IRI("https://example.com/example"),
+				it:     vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType},
 			},
 			wantErr: nil,
 		},
@@ -438,7 +438,7 @@ func Test_repo_AddTo(t *testing.T) {
 			setupFns: []initFn{withOpenRoot, withCollection("https://example.com/~jdoe/blocked"), withItems(&vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType})},
 			args: args{
 				colIRI: "https://example.com/~jdoe/blocked",
-				it:     vocab.IRI("https://example.com/example"),
+				it:     &vocab.Object{ID: "https://example.com/example", Type: vocab.NoteType},
 			},
 			wantErr: nil,
 		},
@@ -842,13 +842,9 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 			name: "inbox::2",
 			args: args{iri: "https://example.com/inbox/2"},
 			want: &vocab.Activity{
-				ID:   "https://example.com/inbox/2",
-				Type: vocab.CreateType,
-				Actor: &vocab.Actor{
-					ID:                "https://example.com/Ross",
-					Type:              vocab.PersonType,
-					PreferredUsername: vocab.NaturalLanguageValuesNew(vocab.DefaultLangRef("Ross")),
-				},
+				ID:     "https://example.com/inbox/2",
+				Type:   vocab.CreateType,
+				Actor:  vocab.IRI("https://example.com/Ross"),
 				Object: filter(inbox)[1],
 			},
 		},

@@ -16,13 +16,13 @@ PROJECT_NAME := $(shell basename $(PWD))
 
 download: go.sum
 
-go.sum:
+go.sum: go.mod
 	$(GO) mod tidy
 
 test: go.sum clean
 	@touch tests.json
 	$(TEST) $(TEST_FLAGS) -test.bench=xxxx -cover $(TEST_TARGET) -json >> tests.json
-	go run github.com/mfridman/tparse@latest -file tests.json
+	go tool tparse -file tests.json
 	@$(RM) ./tests.json
 
 bench: go.sum clean
