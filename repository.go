@@ -114,14 +114,10 @@ func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 }
 
 // Create
+// Deprecated
 func (r *repo) Create(col vocab.CollectionInterface) (vocab.CollectionInterface, error) {
-	if vocab.IsNil(col) {
-		return col, errors.Newf("Unable to operate on nil element")
-	}
-	if len(col.GetLink()) == 0 {
-		return col, errors.Newf("Invalid collection, it does not have a valid IRI")
-	}
-	return saveCollection(r, col)
+	it, err := r.Save(col)
+	return it.(vocab.CollectionInterface), err
 }
 
 // Save
@@ -224,19 +220,6 @@ func iriPath(iri vocab.IRI) string {
 	return filepath.Join(pieces...)
 }
 
-func saveCollection(r *repo, col vocab.CollectionInterface) (vocab.CollectionInterface, error) {
-	it, err := save(r, col)
-	if err != nil {
-		return nil, err
-	}
-
-	err = vocab.OnOrderedCollection(it, func(c *vocab.OrderedCollection) error {
-		col = c
-		return nil
-	})
-	return col, err
-}
-
 func createCollection(r *repo, colIRI vocab.IRI, owner vocab.Item) (vocab.CollectionInterface, error) {
 	col := vocab.OrderedCollection{
 		ID:        colIRI,
@@ -253,7 +236,11 @@ func createCollection(r *repo, colIRI vocab.IRI, owner vocab.Item) (vocab.Collec
 			return nil
 		})
 	}
-	return saveCollection(r, &col)
+	_, err := save(r, &col)
+	if err != nil {
+		return nil, err
+	}
+	return &col, nil
 }
 
 var orderedCollectionTypes = vocab.ActivityVocabularyTypes{vocab.OrderedCollectionPageType, vocab.OrderedCollectionType}

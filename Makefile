@@ -21,7 +21,7 @@ go.sum: go.mod
 
 test: go.sum clean
 	@touch tests.json
-	$(TEST) $(TEST_FLAGS) -test.bench=xxxx -cover $(TEST_TARGET) -json >> tests.json
+	$(TEST) $(TEST_FLAGS) -test.bench=xxxx -cover $(TEST_TARGET) -json > tests.json
 	go tool tparse -file tests.json
 	@$(RM) ./tests.json
 
