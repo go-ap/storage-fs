@@ -88,7 +88,7 @@ var _init = sync.OnceFunc(func() {
 	_ = os.MkdirAll(tempDir, defaultDirPerm)
 	_, _ = setup(Config{Path: tempDir, EnableIndex: true, EnableCache: true}, count)
 
-	fmt.Printf("created temp dir in %s %s\n", time.Now().Sub(st), tempDir)
+	fmt.Printf("created temp dir in %s %s\n", time.Since(st), tempDir)
 })
 
 const count = 2000
