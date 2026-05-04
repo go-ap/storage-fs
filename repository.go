@@ -113,13 +113,6 @@ func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
 	return filters.Checks(f).Run(it), nil
 }
 
-// Create
-// Deprecated
-func (r *repo) Create(col vocab.CollectionInterface) (vocab.CollectionInterface, error) {
-	it, err := r.Save(col)
-	return it.(vocab.CollectionInterface), err
-}
-
 // Save
 func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
 	if r == nil || r.root == nil {

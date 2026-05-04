@@ -39,7 +39,7 @@ func populate(st *repo, count int) error {
 		ob.ID = collectionIRI
 		return nil
 	})
-	if _, err := st.Create(col); err != nil {
+	if _, err := st.Save(col); err != nil {
 		return err
 	}
 	results[col.GetType()]++
