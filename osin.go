@@ -239,8 +239,8 @@ func putRaw(root *os.Root, filePath string, raw []byte) error {
 	return nil
 }
 
-// UpdateClient
-func (r *repo) UpdateClient(c osin.Client) error {
+// SaveClient
+func (r *repo) SaveClient(c osin.Client) error {
 	if interfaceIsNil(c) {
 		return nil
 	}
@@ -258,11 +258,6 @@ func (r *repo) UpdateClient(c osin.Client) error {
 
 	clientPath := r.oauthClientPath(clientsBucket, cl.Id)
 	return putItem(root, clientPath, cl)
-}
-
-// CreateClient
-func (r *repo) CreateClient(c osin.Client) error {
-	return r.UpdateClient(c)
 }
 
 // RemoveClient

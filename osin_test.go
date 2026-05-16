@@ -212,7 +212,7 @@ func Test_repo_CreateClient(t *testing.T) {
 			_ = s.Open()
 			defer s.Close()
 
-			err := s.CreateClient(tt.client)
+			err := s.SaveClient(tt.client)
 			if tt.err != nil && err == nil {
 				t.Errorf("Unexpected error when calling CreateClient, received %s", err)
 			}
@@ -259,9 +259,9 @@ func Test_repo_UpdateClient(t *testing.T) {
 			_ = s.Open()
 			defer s.Close()
 
-			err := s.CreateClient(tt.client)
+			err := s.SaveClient(tt.client)
 			if tt.err != nil && err == nil {
-				t.Errorf("Unexpected error when calling CreateClient, received %s", err)
+				t.Errorf("Unexpected error when calling SaveClient, received %s", err)
 			}
 			if tt.client == nil {
 				return
@@ -611,10 +611,10 @@ func Test_repo_SaveXXX_with_brokenEncode(t *testing.T) {
 		encodeFn = oldEncode
 	})
 
-	t.Run("CreateClient", func(t *testing.T) {
-		err := rr.CreateClient(defaultClient)
+	t.Run("SaveClient", func(t *testing.T) {
+		err := rr.SaveClient(defaultClient)
 		if !cmp.Equal(err, wantErr, EquateWeakErrors) {
-			t.Errorf("CreateClient() error = %v, wantErr %v", err, wantErr)
+			t.Errorf("SaveClient() error = %v, wantErr %v", err, wantErr)
 		}
 	})
 
