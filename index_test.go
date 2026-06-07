@@ -213,7 +213,7 @@ func Test_newBitmap(t *testing.T) {
 }
 
 func Test_onCollectionBitmap(t *testing.T) {
-	var logHash = func(t *testing.T, ) func(bitmap *roaring64.Bitmap, u uint64) {
+	var logHash = func(t *testing.T) func(bitmap *roaring64.Bitmap, u uint64) {
 		return func(bitmap *roaring64.Bitmap, u uint64) {
 			t.Logf("%d - %v", u, bitmap)
 		}

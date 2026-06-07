@@ -1,6 +1,7 @@
 image: alpine/edge
 packages:
   - go
+  - golangci-lint
 sources:
   - https://github.com/go-ap/storage-fs
 secrets:
@@ -8,6 +9,9 @@ secrets:
 environment:
   GO111MODULE: 'on'
 tasks:
+  - fmt: |
+      cd storage-fs
+      test -z $(gofmt -l .)
   - tests: |
       cd storage-fs
       make test
@@ -19,3 +23,6 @@ tasks:
       git switch -C master origin/master
       make coverage
       go tool goveralls -flagname unit-tests -service=${CI_NAME} -coverprofile storage-fs.coverprofile -repotokenfile ~/.coveralls.tok
+  - lint: |
+      cd storage-fs
+      golangci-lint run || true
