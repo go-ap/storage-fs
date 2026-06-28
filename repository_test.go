@@ -390,7 +390,7 @@ func Test_repo_AddTo(t *testing.T) {
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
 			},
-			wantErr: errors.NotFoundf("invalid item to add to collection"),
+			wantErr: errors.Annotatef(errors.NotFoundf("not found"), "invalid item to add to collection"),
 		},
 		{
 			name:     "item doesn't exist in ordered collection",
@@ -400,7 +400,7 @@ func Test_repo_AddTo(t *testing.T) {
 				colIRI: "https://example.com/followers",
 				it:     vocab.IRI("https://example.com"),
 			},
-			wantErr: errors.NotFoundf("invalid item to add to collection"),
+			wantErr: errors.Annotatef(errors.NotFoundf("not found"), "invalid item to add to collection"),
 		},
 		{
 			name:     "item exists in ordered collection",
@@ -450,7 +450,7 @@ func Test_repo_AddTo(t *testing.T) {
 
 			err := r.AddTo(tt.args.colIRI, tt.args.it)
 			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
-				t.Errorf("AddTo() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("AddTo() error = %s", cmp.Diff(tt.wantErr, err, EquateWeakErrors))
 			}
 			if tt.wantErr != nil {
 				return
@@ -503,13 +503,13 @@ func Test_repo_Load(t *testing.T) {
 			name:    "empty",
 			args:    args{iri: ""},
 			want:    nil,
-			wantErr: errors.NotFoundf("file not found"),
+			wantErr: errors.NotFoundf("not found"),
 		},
 		{
 			name:    "empty iri gives us not found",
 			args:    args{iri: ""},
 			want:    nil,
-			wantErr: errors.NotFoundf("file not found"),
+			wantErr: errors.NotFoundf("not found"),
 		},
 		{
 			name: "root iri gives us the root",
@@ -634,7 +634,7 @@ func Test_repo_Load(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := r.Load(tt.args.iri, tt.args.fil...)
 			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
-				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Load() error = %s", cmp.Diff(tt.wantErr, err, EquateWeakErrors))
 				return
 			}
 			if !cmp.Equal(tt.want, got, EquateItemCollections) {
@@ -683,13 +683,13 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 			name:    "empty",
 			args:    args{iri: ""},
 			want:    nil,
-			wantErr: errors.NotFoundf("file not found"),
+			wantErr: errors.NotFoundf("not found"),
 		},
 		{
 			name:    "empty iri gives us not found",
 			args:    args{iri: ""},
 			want:    nil,
-			wantErr: errors.NotFoundf("file not found"),
+			wantErr: errors.NotFoundf("not found"),
 		},
 		{
 			name: "root iri gives us the root",
@@ -856,8 +856,8 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 			defer r.Close()
 
 			got, err := r.Load(tt.args.iri, tt.args.fil...)
-			if !errors.Is(err, tt.wantErr) {
-				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
+			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
+				t.Errorf("Load() error = %s", cmp.Diff(tt.wantErr, err, EquateWeakErrors))
 				return
 			}
 			if !vocab.ItemsEqual(got, tt.want) {

@@ -399,7 +399,7 @@ func getAbsStoragePath(p string) (string, error) {
 	if fi, err := os.Stat(p); err != nil {
 		return "", err
 	} else if !fi.IsDir() {
-		return "", errors.NotValidf("path %s is invalid for storage", p)
+		return "", errors.Newf("path %s is invalid for storage", p)
 	}
 	return p, nil
 }
@@ -717,7 +717,7 @@ func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, err
 	var err error
 	if vocab.IsNil(it) || vocab.IsIRI(it) {
 		if it, err = loadRawFromPath(r.root, p); err != nil {
-			return nil, asPathErr(err)
+			return nil, errors.NewNotFound(asPathErr(err), "")
 		}
 	}
 	if it == nil || vocab.IsNil(it) {
@@ -951,13 +951,13 @@ func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, err
 		fil = filters.Checks{filters.SameID(iri)}
 	}
 	if it, err = r.loadItemFromPath(getObjectKey(itPath), fil...); err != nil {
-		return nil, errors.NewNotFound(asPathErr(err), "not found")
+		return nil, err
 	}
 	if vocab.IsNil(it) {
-		return nil, errors.NewNotFound(asPathErr(err), "not found")
+		return nil, err
 	}
 	if vocab.IsIRI(it) {
-		return nil, errors.NewNotFound(asPathErr(err), "not found")
+		return nil, err
 	}
 	return it, err
 }

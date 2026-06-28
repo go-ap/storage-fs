@@ -41,11 +41,11 @@ func (r *repo) PasswordCheck(iri vocab.IRI, pw []byte) error {
 	m := new(Metadata)
 
 	if err := r.LoadMetadata(iri, m); err != nil {
-		return errors.Annotatef(err, "Could not find load metadata for %s", iri)
+		return err
 	}
 
 	if err := bcrypt.CompareHashAndPassword(m.Pw, pw); err != nil {
-		return errors.NewUnauthorized(err, "Invalid pw")
+		return errors.NewUnauthorized(err, "invalid pw")
 	}
 	return nil
 }
@@ -58,11 +58,11 @@ func (r *repo) LoadMetadata(iri vocab.IRI, m any) error {
 	p := iriPath(iri)
 	raw, err := loadRaw(r.root, getMetadataKey(p))
 	if err != nil {
-		err = errors.NewNotFound(err, "Could not find metadata in path %s", p)
+		err = errors.NewNotFound(err, "could not find metadata in path")
 		return err
 	}
 	if err = decodeFn(raw, m); err != nil {
-		return errors.Annotatef(err, "Could not unmarshal metadata")
+		return errors.Annotatef(err, "could not unmarshal metadata")
 	}
 	return nil
 }

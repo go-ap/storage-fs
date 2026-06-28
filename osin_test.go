@@ -435,8 +435,8 @@ func Test_repo_LoadRefresh(t *testing.T) {
 			t.Cleanup(r.Close)
 
 			got, err := r.LoadRefresh(tt.code)
-			if !errors.Is(err, tt.wantErr) {
-				t.Errorf("LoadRefresh() error = %v, wantErr %v", err, tt.wantErr)
+			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
+				t.Errorf("LoadRefresh() error = %s", cmp.Diff(tt.wantErr, err, EquateWeakErrors))
 			}
 			if tt.wantErr != nil {
 				return

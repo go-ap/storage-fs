@@ -3,7 +3,9 @@ package fs
 import (
 	"crypto"
 	"fmt"
+	"os"
 	"reflect"
+	"syscall"
 	"testing"
 
 	vocab "github.com/go-ap/activitypub"
@@ -32,7 +34,7 @@ func Test_repo_LoadKey(t *testing.T) {
 				path: t.TempDir(),
 			},
 			setupFns: []initFn{withOpenRoot, withMockItems},
-			wantErr:  errors.NotFoundf("not found"),
+			wantErr:  errors.NewNotFound(&os.PathError{Op: "openat", Path: "__meta_data", Err: syscall.ENOENT}, `could not find metadata in path`),
 		},
 		{
 			name: "~jdoe without metadata",
@@ -41,7 +43,7 @@ func Test_repo_LoadKey(t *testing.T) {
 			},
 			setupFns: []initFn{withOpenRoot, withMockItems},
 			iri:      "https://example.com/~jdoe",
-			wantErr:  errors.NotFoundf("not found"),
+			wantErr:  errors.NewNotFound(&os.PathError{Op: "openat", Path: "example.com/~jdoe/__meta_data", Err: syscall.ENOENT}, `could not find metadata in path`),
 		},
 		{
 			name: "~jdoe with metadata",
@@ -59,8 +61,8 @@ func Test_repo_LoadKey(t *testing.T) {
 			t.Cleanup(r.Close)
 
 			got, err := r.LoadKey(tt.iri)
-			if !errors.Is(err, tt.wantErr) {
-				t.Errorf("LoadKey() error = %v, wantErr %v", err, tt.wantErr)
+			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
+				t.Errorf("LoadKey() error = %s", cmp.Diff(tt.wantErr, err, EquateWeakErrors))
 				return
 			}
 			if !cmp.Equal(got, tt.want) {
@@ -95,7 +97,7 @@ func Test_repo_LoadMetadata(t *testing.T) {
 				path: t.TempDir(),
 			},
 			setupFns: []initFn{withOpenRoot, withMockItems},
-			wantErr:  errors.NotFoundf("not found"),
+			wantErr:  errors.NewNotFound(&os.PathError{Op: "openat", Path: "__meta_data", Err: syscall.ENOENT}, `could not find metadata in path`),
 		},
 		{
 			name: "~jdoe without metadata",
@@ -107,7 +109,7 @@ func Test_repo_LoadMetadata(t *testing.T) {
 				iri: "https://example.com/~jdoe",
 				m:   Metadata{},
 			},
-			wantErr: errors.NotFoundf("not found"),
+			wantErr: errors.NewNotFound(&os.PathError{Op: "openat", Path: "example.com/~jdoe/__meta_data", Err: syscall.ENOENT}, `could not find metadata in path`),
 		},
 		{
 			name: "~jdoe with metadata",
@@ -130,8 +132,9 @@ func Test_repo_LoadMetadata(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
 			t.Cleanup(r.Close)
 
-			if err := r.LoadMetadata(tt.args.iri, tt.args.m); !errors.Is(err, tt.wantErr) {
-				t.Errorf("LoadMetadata() error = %v, wantErr %v", err, tt.wantErr)
+			err := r.LoadMetadata(tt.args.iri, tt.args.m)
+			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
+				t.Errorf("LoadMetadata() error = %s", cmp.Diff(tt.wantErr, err, EquateWeakErrors))
 			}
 			if tt.wantErr != nil {
 				return
@@ -168,7 +171,7 @@ func Test_repo_PasswordCheck(t *testing.T) {
 				path: t.TempDir(),
 			},
 			setupFns: []initFn{withOpenRoot, withMockItems},
-			wantErr:  errors.NotFoundf("not found"),
+			wantErr:  errors.NewNotFound(&os.PathError{Op: "openat", Path: "__meta_data", Err: syscall.ENOENT}, `could not find metadata in path`),
 		},
 		{
 			name: "~jdoe without metadata",
@@ -179,7 +182,7 @@ func Test_repo_PasswordCheck(t *testing.T) {
 			args: args{
 				iri: "https://example.com/~jdoe",
 			},
-			wantErr: errors.NotFoundf("not found"),
+			wantErr: errors.NewNotFound(&os.PathError{Op: "openat", Path: "example.com/~jdoe/__meta_data", Err: syscall.ENOENT}, `could not find metadata in path`),
 		},
 		{
 			name: "~jdoe with correct pw",
@@ -202,7 +205,7 @@ func Test_repo_PasswordCheck(t *testing.T) {
 				iri: "https://example.com/~jdoe",
 				pw:  []byte("asd"),
 			},
-			wantErr: errors.Unauthorizedf("Invalid pw"),
+			wantErr: errors.NewUnauthorized(errors.Newf("crypto/bcrypt: hashedPassword is not the hash of the given password"), "invalid pw"),
 		},
 	}
 	for _, tt := range tests {
@@ -210,8 +213,9 @@ func Test_repo_PasswordCheck(t *testing.T) {
 			r := mockRepo(t, tt.fields, tt.setupFns...)
 			t.Cleanup(r.Close)
 
-			if err := r.PasswordCheck(tt.args.iri, tt.args.pw); !errors.Is(err, tt.wantErr) {
-				t.Errorf("PasswordCheck() error = %v, wantErr %v", err, tt.wantErr)
+			err := r.PasswordCheck(tt.args.iri, tt.args.pw)
+			if !cmp.Equal(err, tt.wantErr, EquateWeakErrors) {
+				t.Errorf("PasswordCheck() error = %s", cmp.Diff(tt.wantErr, err, EquateWeakErrors))
 			}
 		})
 	}
