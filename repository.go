@@ -270,7 +270,7 @@ func (r *repo) AddTo(colIRI vocab.IRI, items ...vocab.Item) error {
 		// we create a symlink to the persisted object in the current collection
 		err = onCollection(r, col, it, func(p string) error {
 			if err := mkDirIfNotExists(r.root, p); err != nil {
-				return errors.Annotatef(err, "Unable to create collection folder %s", p)
+				return errors.Annotatef(err, "unable to create collection folder %s", p)
 			}
 			// NOTE(marius): if 'it' IRI belongs to the 'col' collection we can skip symlinking it
 			if it.GetLink().Contains(col.GetLink(), true) {
@@ -472,13 +472,13 @@ func save(r *repo, it vocab.Item) (vocab.Item, error) {
 
 func onCollection(r *repo, col vocab.Item, it vocab.Item, fn func(p string) error) error {
 	if vocab.IsNil(it) {
-		return errors.Newf("Unable to operate on nil element")
+		return errors.Newf("unable to operate on nil element")
 	}
 	if vocab.IsNil(col) || len(col.GetLink()) == 0 {
-		return errors.Newf("Unable to find collection")
+		return errors.Newf("unable to find collection")
 	}
 	if len(it.GetLink()) == 0 {
-		return errors.Newf("Invalid collection, it does not have a valid IRI")
+		return errors.Newf("invalid item, it does not have a valid IRI")
 	}
 
 	itPath := iriPath(col.GetLink())
@@ -486,7 +486,7 @@ func onCollection(r *repo, col vocab.Item, it vocab.Item, fn func(p string) erro
 		if os.IsExist(err) {
 			return errors.NewConflict(err, "%s already exists in collection %s", it.GetID(), itPath)
 		} else if !os.IsNotExist(err) {
-			return errors.Annotatef(err, "Unable to save entries to collection %s", itPath)
+			return errors.Annotatef(err, "unable to save entries to collection %s", itPath)
 		}
 	}
 	r.removeFromCache(col.GetLink())
