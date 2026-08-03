@@ -524,7 +524,7 @@ func (r *repo) loadOneFromIRI(i vocab.IRI) (vocab.Item, error) {
 	if vocab.IsIRI(col) {
 		return nil, errors.Conflictf("%s could not be loaded from disk", col)
 	}
-	if col.IsCollection() {
+	if vocab.IsCollection(col) {
 		var result vocab.Item
 		_ = vocab.OnCollectionIntf(col, func(col vocab.CollectionInterface) error {
 			result = col.Collection().First()
@@ -723,7 +723,7 @@ func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, err
 	if it == nil || vocab.IsNil(it) {
 		return nil, errors.NotFoundf("not found")
 	}
-	if it.IsCollection() {
+	if vocab.IsCollection(it) {
 		// we need to dereference them, so no further filtering/processing is needed here
 		return it, nil
 	}
@@ -839,7 +839,7 @@ func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollectio
 }
 
 func derefPropertiesForCurrentPage(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item {
-	if vocab.IsNil(it) || !it.IsCollection() || len(fil) == 0 {
+	if vocab.IsNil(it) || !vocab.IsCollection(it) || len(fil) == 0 {
 		return it
 	}
 
