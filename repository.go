@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"git.sr.ht/~mariusor/lw"
@@ -69,6 +70,7 @@ func New(c Config) (*repo, error) {
 }
 
 type repo struct {
+	m      sync.Mutex
 	path   string
 	root   *os.Root
 	index  *bitmaps
@@ -85,15 +87,19 @@ func (r *repo) Open() error {
 	if err != nil {
 		return err
 	}
+	r.m.Lock()
 	r.root = root
+	r.m.Unlock()
 	return nil
 }
 
-func (r *repo) close() error {
+func (r *repo) close() (err error) {
+	r.m.Lock()
 	if r.root != nil {
-		return r.root.Close()
+		err = r.root.Close()
 	}
-	return nil
+	r.m.Unlock()
+	return err
 }
 
 // Close
@@ -728,12 +734,13 @@ func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, err
 		return it, nil
 	}
 
-	if len(fil) > 0 {
-		if !applyAllFiltersOnItem(it, fil...) {
-			return nil, errors.NotFoundf("not found")
-		}
-		it = dereferencePropertiesByType(r, it, fil...)
+	if len(fil) == 0 {
+		fil = append(fil, filters.SameID(it.GetLink()))
 	}
+	if !applyAllFiltersOnItem(it, fil...) {
+		return nil, errors.NotFoundf("not found")
+	}
+	it = dereferencePropertiesByType(r, it, fil...)
 	if cachedIt == nil {
 		r.setToCache(it)
 	}
@@ -747,30 +754,17 @@ func (r *repo) setToCache(it vocab.Item) {
 	r.cache.Store(it.GetLink(), it)
 }
 
-// loadCollectionFromPath
-func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
-	it, err := r.loadItemFromPath(itPath)
-	if err != nil || vocab.IsNil(it) {
-		return nil, errors.NewNotFound(err, "not found")
-	}
-	if vocab.IsIRI(it) {
-		r.logger.Warnf("invalid collection to operate on %T: %s", it, it.GetLink())
-		return nil, nil
-	}
-
+// loadCollectionItemsFromPath
+func (r *repo) loadCollectionItemsFromPath(itPath string, it vocab.Item, fil ...filters.Check) (vocab.Item, error) {
 	_ = r.loadIndex()
 
 	// NOTE(marius): let's make sure that if we have filters for authorization/recipients
-	// we respect them for the collection itself.
+	//  we respect them for the collection itself.
 	authCheck := filters.AuthorizedChecks(fil...)
 	if it = authCheck.Filter(it); vocab.IsNil(it) {
-		return nil, errors.NewForbidden(err, "forbidden")
+		return nil, errors.Forbiddenf("forbidden")
 	}
 
-	_ = vocab.OnObject(it, func(ob *vocab.Object) error {
-		ob.ID = iri
-		return nil
-	})
 	var totalItems uint = 0
 	_ = vocab.OnCollection(it, func(c *vocab.Collection) error {
 		totalItems = c.TotalItems
@@ -789,18 +783,22 @@ func (r *repo) loadCollectionFromPath(itPath string, iri vocab.IRI, fil ...filte
 
 		var fn fs.WalkDirFunc
 		fn = loadWithRawFiltering(r, colDirPath, &items, fil...)
-		if err = fs.WalkDir(r.root.FS(), colDirPath, fn); err != nil {
+		if err := fs.WalkDir(r.root.FS(), colDirPath, fn); err != nil {
 			return it, err
 		}
 	}
 
+	var err error
 	if orderedCollectionTypes.Match(it.GetType()) {
 		err = vocab.OnOrderedCollection(it, buildOrderedCollection(items))
 	} else {
 		err = vocab.OnCollection(it, buildCollection(items))
 	}
+	if err != nil {
+		return it, err
+	}
 
-	return derefPropertiesForCurrentPage(r, it, fil...), err
+	return derefPropertiesForCurrentPage(r, it, fil...), nil
 }
 
 func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollection, ff ...filters.Check) fs.WalkDirFunc {
@@ -939,19 +937,20 @@ func buildOrderedCollection(items vocab.ItemCollection) vocab.WithOrderedCollect
 	}
 }
 
-func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (vocab.Item, error) {
-	var err error
-	var it vocab.Item
-
+func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (it vocab.Item, err error) {
 	itPath := iriPath(iri)
-	if isStorageCollectionKey(itPath) {
-		return r.loadCollectionFromPath(getObjectKey(itPath), iri, fil...)
-	}
-	if len(fil) == 0 {
-		fil = filters.Checks{filters.SameID(iri)}
-	}
 	if it, err = r.loadItemFromPath(getObjectKey(itPath), fil...); err != nil {
 		return nil, err
+	}
+	if vocab.CollectionTypes.Match(it.GetType()) {
+		it, err = r.loadCollectionItemsFromPath(getObjectKey(itPath), it, fil...)
+		if err != nil {
+			return nil, err
+		}
+		_ = vocab.OnObject(it, func(ob *vocab.Object) error {
+			ob.ID = iri
+			return nil
+		})
 	}
 	if vocab.IsNil(it) {
 		return nil, err

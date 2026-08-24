@@ -391,7 +391,7 @@ func (r *repo) Reindex() (err error) {
 		maybeCol := filepath.Base(dir)
 		iri := r.iriFromPath(dir)
 		if storageCollectionPaths.Contains(vocab.CollectionPath(maybeCol)) {
-			it, err = r.loadCollectionFromPath(filepath.Join(path), iri)
+			it, err = r.loadCollectionItemsFromPath(filepath.Join(path), iri)
 			if err == nil {
 				err = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring64.Bitmap).Add))
 			}
