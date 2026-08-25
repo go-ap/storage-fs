@@ -389,17 +389,15 @@ func (r *repo) Reindex() (err error) {
 		var it vocab.Item
 		dir := filepath.Dir(path)
 		maybeCol := filepath.Base(dir)
-		iri := r.iriFromPath(dir)
-		if storageCollectionPaths.Contains(vocab.CollectionPath(maybeCol)) {
-			it, err = r.loadCollectionItemsFromPath(filepath.Join(path), iri)
-			if err == nil {
-				err = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring64.Bitmap).Add))
-			}
-		} else {
-			it, err = r.loadItemFromPath(filepath.Join(path))
-		}
+
+		it, err = r.loadFromPath(filepath.Join(path))
 		if err != nil || vocab.IsNil(it) {
 			return nil
+		}
+		if storageCollectionPaths.Contains(vocab.CollectionPath(maybeCol)) {
+			if err = vocab.OnCollectionIntf(it, r.collectionBitmapOp((*roaring64.Bitmap).Add)); err != nil {
+				return nil
+			}
 		}
 		if err = r.addToIndex(it, dir); err != nil {
 			if errors.IsNotImplemented(err) {

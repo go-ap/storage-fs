@@ -135,7 +135,7 @@ func (r *repo) Save(it vocab.Item) (vocab.Item, error) {
 func (r *repo) RemoveFrom(colIRI vocab.IRI, items ...vocab.Item) error {
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
 	itPath := iriPath(colIRI)
-	col, err := r.loadItemFromPath(getObjectKey(itPath))
+	col, err := r.loadFromPath(getObjectKey(itPath))
 	if err != nil && !isHiddenCollectionKey(itPath) {
 		return err
 	}
@@ -249,7 +249,7 @@ var collectionTypes = vocab.ActivityVocabularyTypes{vocab.CollectionPageType, vo
 func (r *repo) AddTo(colIRI vocab.IRI, items ...vocab.Item) error {
 	// NOTE(marius): We make sure the collection exists (unless it's a hidden collection)
 	itPath := iriPath(colIRI)
-	col, err := r.loadItemFromPath(getObjectKey(itPath))
+	col, err := r.loadFromPath(getObjectKey(itPath))
 	if err != nil && !isHiddenCollectionKey(itPath) {
 		return err
 	}
@@ -387,13 +387,6 @@ func getObjectKey(p string) string {
 	return path.Join(p, objectKey)
 }
 
-func (r *repo) removeFromCache(iri vocab.IRI) {
-	if r.cache == nil {
-		return
-	}
-	r.cache.Delete(iri.GetLink())
-}
-
 func getAbsStoragePath(p string) (string, error) {
 	if !filepath.IsAbs(p) {
 		var err error
@@ -408,6 +401,13 @@ func getAbsStoragePath(p string) (string, error) {
 		return "", errors.Newf("path %s is invalid for storage", p)
 	}
 	return p, nil
+}
+
+func (r *repo) removeFromCache(iri vocab.IRI) {
+	if r.cache == nil {
+		return
+	}
+	r.cache.Delete(iri.GetLink())
 }
 
 func deleteItem(r *repo, it vocab.Item) error {
@@ -520,7 +520,7 @@ func itemFromRaw(raw []byte) (vocab.Item, error) {
 }
 
 func (r *repo) loadOneFromIRI(i vocab.IRI) (vocab.Item, error) {
-	col, err := r.loadItemFromPath(getObjectKey(iriPath(i)))
+	col, err := r.loadFromPath(getObjectKey(iriPath(i)))
 	if err != nil {
 		return nil, err
 	}
@@ -561,7 +561,7 @@ func loadFilteredPropsForObject(r *repo, fil ...filters.Check) func(o *vocab.Obj
 				if vocab.IsNil(t) || !vocab.IsIRI(t) {
 					return nil
 				}
-				ob, err := r.loadItemFromPath(getObjectKey(iriPath(t.GetLink())))
+				ob, err := r.loadFromPath(getObjectKey(iriPath(t.GetLink())))
 				if err != nil {
 					continue
 				}
@@ -584,7 +584,7 @@ func dereferenceItemAndFilter(r *repo, ob vocab.Item, fil ...filters.Check) (voc
 		return ob, nil
 	}
 	itPath := iriPath(ob.GetLink())
-	o, err := r.loadItemFromPath(getObjectKey(itPath), fil...)
+	o, err := r.loadFromPath(getObjectKey(itPath), fil...)
 	if err != nil {
 		return ob, nil
 	}
@@ -680,13 +680,7 @@ func getOriginalIRI(root *os.Root, p string) (vocab.Item, error) {
 	return vocab.IRI(u.String()), nil
 }
 
-func (r *repo) loadFromCache(iri vocab.IRI) vocab.Item {
-	if r.cache == nil {
-		return nil
-	}
-	return r.cache.Load(iri.GetLink())
-}
-
+// loadRawFromPath
 func loadRawFromPath(root *os.Root, p string) (vocab.Item, error) {
 	raw, err := loadRaw(root, p)
 	if err != nil {
@@ -708,18 +702,13 @@ func loadRawFromPath(root *os.Root, p string) (vocab.Item, error) {
 	return it, nil
 }
 
-// loadItemFromPath
-func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, error) {
+// loadFromPath
+func (r *repo) loadFromPath(p string, fil ...filters.Check) (vocab.Item, error) {
 	if r.root == nil {
 		return nil, errNotOpen
 	}
-	cachedIt := r.loadFromCache(r.iriFromPath(p))
 
 	var it vocab.Item
-	if cachedIt != nil {
-		it = cachedIt
-	}
-
 	var err error
 	if vocab.IsNil(it) || vocab.IsIRI(it) {
 		if it, err = loadRawFromPath(r.root, p); err != nil {
@@ -729,76 +718,7 @@ func (r *repo) loadItemFromPath(p string, fil ...filters.Check) (vocab.Item, err
 	if it == nil || vocab.IsNil(it) {
 		return nil, errors.NotFoundf("not found")
 	}
-	if vocab.IsCollection(it) {
-		// we need to dereference them, so no further filtering/processing is needed here
-		return it, nil
-	}
-
-	if len(fil) == 0 {
-		fil = append(fil, filters.SameID(it.GetLink()))
-	}
-	if !applyAllFiltersOnItem(it, fil...) {
-		return nil, errors.NotFoundf("not found")
-	}
-	it = dereferencePropertiesByType(r, it, fil...)
-	if cachedIt == nil {
-		r.setToCache(it)
-	}
-	return it, nil
-}
-
-func (r *repo) setToCache(it vocab.Item) {
-	if it == nil || r.cache == nil {
-		return
-	}
-	r.cache.Store(it.GetLink(), it)
-}
-
-// loadCollectionItemsFromPath
-func (r *repo) loadCollectionItemsFromPath(itPath string, it vocab.Item, fil ...filters.Check) (vocab.Item, error) {
-	_ = r.loadIndex()
-
-	// NOTE(marius): let's make sure that if we have filters for authorization/recipients
-	//  we respect them for the collection itself.
-	authCheck := filters.AuthorizedChecks(fil...)
-	if it = authCheck.Filter(it); vocab.IsNil(it) {
-		return nil, errors.Forbiddenf("forbidden")
-	}
-
-	var totalItems uint = 0
-	_ = vocab.OnCollection(it, func(c *vocab.Collection) error {
-		totalItems = c.TotalItems
-		return nil
-	})
-
-	items, _ := r.searchIndex(it, fil...)
-	if len(items) == 0 {
-		// NOTE(marius): we load items the hard way if the index search resulted no hits, because we
-		// can't make use of all the filters in the index. (Yet.)
-		if items == nil {
-			items = make(vocab.ItemCollection, 0, totalItems)
-		}
-
-		colDirPath := filepath.Dir(itPath)
-
-		var fn fs.WalkDirFunc
-		fn = loadWithRawFiltering(r, colDirPath, &items, fil...)
-		if err := fs.WalkDir(r.root.FS(), colDirPath, fn); err != nil {
-			return it, err
-		}
-	}
-
-	var err error
-	if orderedCollectionTypes.Match(it.GetType()) {
-		err = vocab.OnOrderedCollection(it, buildOrderedCollection(items))
-	} else {
-		err = vocab.OnCollection(it, buildCollection(items))
-	}
-	if err != nil {
-		return it, err
-	}
-
-	return derefPropertiesForCurrentPage(r, it, fil...), nil
+	return dereferencePropertiesByType(r, it, fil...), nil
 }
 
 func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollection, ff ...filters.Check) fs.WalkDirFunc {
@@ -864,36 +784,82 @@ func dereferencePropertiesByType(r *repo, it vocab.Item, fil ...filters.Check) v
 	typ := it.GetType()
 	// NOTE(marius): this can probably expedite filtering if we early exit when we fail to load the
 	// properties that need to be loaded for sub-filters.
-	if vocab.IntransitiveActivityTypes.Match(typ) /*&& len(intransitiveChecks) > 0*/ {
+	switch {
+	case vocab.IntransitiveActivityTypes.Match(typ) /*&& len(intransitiveChecks) > 0*/ :
 		checks := append(intransitiveChecks, authorizedChecks...)
 		_ = vocab.OnIntransitiveActivity(it, loadFilteredPropsForIntransitiveActivity(r, checks...))
-	}
-	if vocab.ActivityTypes.Match(typ) /*&& len(activityChecks) > 0*/ {
+	case vocab.ActivityTypes.Match(typ) /*&& len(activityChecks) > 0*/ :
 		checks := append(activityChecks, authorizedChecks...)
 		_ = vocab.OnActivity(it, loadFilteredPropsForActivity(r, checks...))
-	}
-	if vocab.ActorTypes.Match(typ) /*&& len(actorChecks) > 0*/ {
+	case vocab.ActorTypes.Match(typ) /*&& len(actorChecks) > 0*/ :
 		checks := append(actorChecks, authorizedChecks...)
 		_ = vocab.OnActor(it, loadFilteredPropsForActor(r, checks...))
-	}
-	if vocab.ObjectTypes.Match(typ) /*&& len(objectChecks) > 0*/ {
+	case vocab.ObjectTypes.Match(typ) /*&& len(objectChecks) > 0*/ :
 		checks := append(objectChecks, authorizedChecks...)
 		_ = vocab.OnObject(it, loadFilteredPropsForObject(r, checks...))
+	case vocab.CollectionType.Match(it.GetType()):
+		_ = vocab.OnCollection(it, loadFilteredItemsForCollection(r, fil...))
+	case vocab.OrderedCollectionType.Match(it.GetType()):
+		_ = vocab.OnOrderedCollection(it, loadFilteredItemsForOrderedCollection(r, fil...))
 	}
 	return it
 }
 
-func applyAllFiltersOnItem(it vocab.Item, fil ...filters.Check) bool {
-	if !filters.All(filters.FilterChecks(fil...)...).Match(it) {
-		return false
+func (r *repo) loadCollectionItems(it vocab.Item, fil ...filters.Check) error {
+	_ = r.loadIndex()
+
+	// NOTE(marius): let's make sure that if we have filters for authorization/recipients
+	//  we respect them for the collection itself.
+	authCheck := filters.AuthorizedChecks(fil...)
+	if it = authCheck.Filter(it); vocab.IsNil(it) {
+		return errors.Forbiddenf("forbidden")
 	}
-	// NOTE(marius): the cursor checks don't get applied if it is not a collection,
-	// extracting them from the filters and applying them manually is the solution.
-	// We should probably fix this!!
-	if !filters.All(filters.CursorChecks(fil...)...).Match(it) {
-		return false
+
+	var totalItems uint = 0
+	_ = vocab.OnCollection(it, func(c *vocab.Collection) error {
+		totalItems = c.TotalItems
+		return nil
+	})
+
+	items, _ := r.searchIndex(it, fil...)
+	if len(items) == 0 {
+		// NOTE(marius): we load items the hard way if the index search resulted no hits, because we
+		// can't make use of all the filters in the index. (Yet.)
+		if items == nil {
+			items = make(vocab.ItemCollection, 0, totalItems)
+		}
+
+		colDirPath := iriPath(it.GetLink())
+		var fn fs.WalkDirFunc
+		fn = loadWithRawFiltering(r, colDirPath, &items, fil...)
+		if err := fs.WalkDir(r.root.FS(), colDirPath, fn); err != nil {
+			return err
+		}
 	}
-	return true
+
+	var err error
+	if orderedCollectionTypes.Match(it.GetType()) {
+		err = vocab.OnOrderedCollection(it, buildOrderedCollection(items))
+	} else {
+		err = vocab.OnCollection(it, buildCollection(items))
+	}
+	if err != nil {
+		return err
+	}
+	it = derefPropertiesForCurrentPage(r, it, fil...)
+	return nil
+}
+
+func loadFilteredItemsForCollection(r *repo, fil ...filters.Check) func(*vocab.Collection) error {
+	return func(col *vocab.Collection) error {
+		return r.loadCollectionItems(col, fil...)
+	}
+}
+
+func loadFilteredItemsForOrderedCollection(r *repo, fil ...filters.Check) func(*vocab.OrderedCollection) error {
+	return func(col *vocab.OrderedCollection) error {
+		return r.loadCollectionItems(col, fil...)
+	}
 }
 
 func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil ...filters.Check) vocab.ItemCollection {
@@ -938,27 +904,37 @@ func buildOrderedCollection(items vocab.ItemCollection) vocab.WithOrderedCollect
 }
 
 func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (it vocab.Item, err error) {
+	cachedIt := r.loadFromCache(iri)
+	if !vocab.IsNil(cachedIt) {
+		return cachedIt, nil
+	}
+
 	itPath := iriPath(iri)
-	if it, err = r.loadItemFromPath(getObjectKey(itPath), fil...); err != nil {
+	if it, err = r.loadFromPath(getObjectKey(itPath), fil...); err != nil {
 		return nil, err
 	}
-	if vocab.CollectionTypes.Match(it.GetType()) {
-		it, err = r.loadCollectionItemsFromPath(getObjectKey(itPath), it, fil...)
-		if err != nil {
-			return nil, err
-		}
-		_ = vocab.OnObject(it, func(ob *vocab.Object) error {
-			ob.ID = iri
-			return nil
-		})
-	}
-	if vocab.IsNil(it) {
+	if vocab.IsNil(it) || vocab.IsIRI(it) {
 		return nil, err
 	}
-	if vocab.IsIRI(it) {
-		return nil, err
+
+	if cachedIt == nil {
+		r.setToCache(it)
 	}
-	return it, err
+	return it, nil
+}
+
+func (r *repo) loadFromCache(iri vocab.IRI) vocab.Item {
+	if r.cache == nil {
+		return nil
+	}
+	return r.cache.Load(iri.GetLink())
+}
+
+func (r *repo) setToCache(it vocab.Item) {
+	if it == nil || r.cache == nil {
+		return
+	}
+	r.cache.Store(it.GetLink(), it)
 }
 
 func Root(s *repo) *os.Root {
