@@ -839,9 +839,21 @@ func (r *repo) loadCollectionItems(it vocab.Item, fil ...filters.Check) error {
 
 	var err error
 	if orderedCollectionTypes.Match(it.GetType()) {
-		err = vocab.OnOrderedCollection(it, buildOrderedCollection(items))
+		err = vocab.OnOrderedCollection(it, func(col *vocab.OrderedCollection) error {
+			col.ID = filters.IRIf(col.ID, fil...)
+			if len(items) > 0 {
+				col.OrderedItems = items
+			}
+			return nil
+		})
 	} else {
-		err = vocab.OnCollection(it, buildCollection(items))
+		err = vocab.OnCollection(it, func(col *vocab.Collection) error {
+			col.ID = filters.IRIf(col.ID, fil...)
+			if len(items) > 0 {
+				col.Items = items
+			}
+			return nil
+		})
 	}
 	if err != nil {
 		return err
@@ -883,24 +895,6 @@ func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil
 	}
 
 	return items
-}
-
-func buildCollection(items vocab.ItemCollection) vocab.WithCollectionFn {
-	return func(col *vocab.Collection) error {
-		if len(items) > 0 {
-			col.Items = items
-		}
-		return nil
-	}
-}
-
-func buildOrderedCollection(items vocab.ItemCollection) vocab.WithOrderedCollectionFn {
-	return func(col *vocab.OrderedCollection) error {
-		if len(items) > 0 {
-			col.OrderedItems = items
-		}
-		return nil
-	}
 }
 
 func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (it vocab.Item, err error) {

@@ -607,16 +607,16 @@ func Test_repo_Load(t *testing.T) {
 				iri: rootOutboxIRI,
 				fil: filters.Checks{
 					filters.HasType(vocab.QuestionType),
-					filters.Target(filters.HasType(vocab.ImageType)),
+					filters.Target(filters.HasType(vocab.NoteType)),
 				},
 			},
 			want: wantsRootOutbox(
-				filters.HasType(vocab.CreateType),
-				filters.Object(filters.HasType(vocab.NoteType)),
+				filters.HasType(vocab.QuestionType),
+				filters.Target(filters.HasType(vocab.NoteType)),
 			),
 		},
 		{
-			name: "outbox?type=Create&object.type=Note",
+			name: "outbox?type=Create&actor.name=Hank",
 			args: args{
 				iri: rootOutboxIRI,
 				fil: filters.Checks{
@@ -626,7 +626,7 @@ func Test_repo_Load(t *testing.T) {
 			},
 			want: wantsRootOutbox(
 				filters.HasType(vocab.CreateType),
-				filters.Object(filters.HasType(vocab.NoteType)),
+				filters.Actor(filters.NameIs("Hank")),
 			),
 		},
 	}
@@ -736,9 +736,9 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 				},
 			},
 			want: &vocab.OrderedCollection{
-				ID:    "https://example.com/inbox",
+				ID:    "https://example.com/inbox?type=Create",
 				Type:  vocab.OrderedCollectionType,
-				First: vocab.IRI("https://example.com/inbox?maxItems=100"),
+				First: vocab.IRI("https://example.com/inbox?maxItems=100&type=Create"),
 				OrderedItems: vocab.ItemCollection{
 					&vocab.Activity{
 						ID:    "https://example.com/inbox/2",
@@ -771,7 +771,7 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 			},
 		},
 		{
-			name: "inbox?type=Create&actor.name=Hank",
+			name: "inbox?type=Create&actor.preferredUsername=Hank",
 			args: args{
 				iri: "https://example.com/inbox",
 				fil: filters.Checks{
@@ -780,9 +780,9 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 				},
 			},
 			want: &vocab.OrderedCollection{
-				ID:    "https://example.com/inbox",
+				ID:    "https://example.com/inbox?actor.preferredUsername=Hank&type=Create",
 				Type:  vocab.OrderedCollectionType,
-				First: vocab.IRI("https://example.com/inbox?maxItems=100"),
+				First: vocab.IRI("https://example.com/inbox?actor.preferredUsername=Hank&type=Create&maxItems=100"),
 				OrderedItems: vocab.ItemCollection{
 					&vocab.Activity{
 						ID:   "https://example.com/inbox/93",
@@ -812,9 +812,9 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 				},
 			},
 			want: &vocab.OrderedCollection{
-				ID:    "https://example.com/inbox",
+				ID:    "https://example.com/inbox?type=Article",
 				Type:  vocab.OrderedCollectionType,
-				First: vocab.IRI("https://example.com/inbox?maxItems=100"),
+				First: vocab.IRI("https://example.com/inbox?maxItems=100&type=Article"),
 				OrderedItems: vocab.ItemCollection{
 					&vocab.Object{
 						ID:      "https://example.com/inbox/1",

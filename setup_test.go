@@ -444,7 +444,7 @@ func wantsRootOutboxPage(maxItems int, ff ...filters.Check) vocab.Item {
 
 func wantsRootOutbox(ff ...filters.Check) vocab.Item {
 	col := &vocab.OrderedCollection{
-		ID:           rootOutboxIRI,
+		ID:           filters.IRIf(rootOutboxIRI, ff...),
 		Type:         vocab.OrderedCollectionType,
 		AttributedTo: rootIRI,
 		Published:    publishedTime,
@@ -453,7 +453,7 @@ func wantsRootOutbox(ff ...filters.Check) vocab.Item {
 		TotalItems:   allActivities.Load().Count(),
 	}
 	if len(ff) > 0 {
-		col.First = vocab.IRI(string(rootOutboxIRI) + "?" + filters.ToValues(filters.WithMaxCount(filters.MaxItems)).Encode())
+		col.First = filters.IRIf(rootOutboxIRI, append(ff, filters.WithMaxCount(filters.MaxItems))...)
 	}
 	return col
 }
