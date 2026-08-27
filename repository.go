@@ -824,7 +824,7 @@ func (r *repo) loadCollectionItems(it vocab.Item, fil ...filters.Check) error {
 	items, _ := r.searchIndex(it, fil...)
 	if len(items) == 0 {
 		// NOTE(marius): we load items the hard way if the index search resulted no hits, because we
-		// can't make use of all the filters in the index. (Yet.)
+		//  can't make use of all the filters in the index. (Yet.)
 		if items == nil {
 			items = make(vocab.ItemCollection, 0, totalItems)
 		}
@@ -840,7 +840,6 @@ func (r *repo) loadCollectionItems(it vocab.Item, fil ...filters.Check) error {
 	var err error
 	if orderedCollectionTypes.Match(it.GetType()) {
 		err = vocab.OnOrderedCollection(it, func(col *vocab.OrderedCollection) error {
-			col.ID = filters.IRIf(col.ID, fil...)
 			if len(items) > 0 {
 				col.OrderedItems = items
 			}
@@ -848,7 +847,6 @@ func (r *repo) loadCollectionItems(it vocab.Item, fil ...filters.Check) error {
 		})
 	} else {
 		err = vocab.OnCollection(it, func(col *vocab.Collection) error {
-			col.ID = filters.IRIf(col.ID, fil...)
 			if len(items) > 0 {
 				col.Items = items
 			}
