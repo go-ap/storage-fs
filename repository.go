@@ -520,20 +520,20 @@ func itemFromRaw(raw []byte) (vocab.Item, error) {
 }
 
 func (r *repo) loadOneFromIRI(i vocab.IRI) (vocab.Item, error) {
-	col, err := r.loadFromPath(getObjectKey(iriPath(i)))
+	it, err := r.loadFromPath(getObjectKey(iriPath(i)))
 	if err != nil {
 		return nil, err
 	}
-	if col == nil {
+	if it == nil {
 		return nil, errors.NotFoundf("nothing found")
 	}
-	if vocab.IsIRI(col) {
-		return nil, errors.Conflictf("%s could not be loaded from disk", col)
+	if vocab.IsIRI(it) {
+		return nil, errors.Conflictf("%s could not be loaded from disk", it)
 	}
-	if vocab.IsCollection(col) {
+	if vocab.IsItemCollection(it) {
 		var result vocab.Item
-		_ = vocab.OnCollectionIntf(col, func(col vocab.CollectionInterface) error {
-			result = col.Collection().First()
+		_ = vocab.OnCollectionIntf(it, func(col vocab.CollectionInterface) error {
+			result = col.Collection().Normalize()
 			return nil
 		})
 		if vocab.IsIRI(result) && result.GetLink().Equals(i.GetLink(), false) {
@@ -542,7 +542,7 @@ func (r *repo) loadOneFromIRI(i vocab.IRI) (vocab.Item, error) {
 		}
 		return result, nil
 	}
-	return col, nil
+	return it, nil
 }
 
 func loadFilteredPropsForActor(r *repo, fil ...filters.Check) func(a *vocab.Actor) error {
