@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	mrand "math/rand"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,8 +52,8 @@ func areItemCollections(a, b any) bool {
 }
 
 func compareItemCollections(x, y interface{}) bool {
-	var i1 vocab.Item
-	var i2 vocab.Item
+	var i1 vocab.ItemCollection
+	var i2 vocab.ItemCollection
 	if ic1, ok := x.(vocab.ItemCollection); ok {
 		i1 = ic1
 	}
@@ -65,6 +66,8 @@ func compareItemCollections(x, y interface{}) bool {
 	if ic2, ok := y.(*vocab.ItemCollection); ok {
 		i2 = *ic2
 	}
+	slices.SortStableFunc(i1, vocab.TimestampSortFunc)
+	slices.SortStableFunc(i2, vocab.TimestampSortFunc)
 	return vocab.ItemsEqual(i1, i2)
 }
 
@@ -116,13 +119,15 @@ var (
 		vocab.IRI("https://example.com/plain-iri"),
 		&vocab.Object{ID: "https://example.com/1", Type: vocab.NoteType},
 		&vocab.Place{ID: "https://example.com/arctic", Type: vocab.PlaceType},
-		//&vocab.Profile{ID: "https://example.com/~jdoe/profile", Type: vocab.ProfileType},
+		&vocab.Profile{ID: "https://example.com/~jdoe/profile", Type: vocab.ProfileType},
 		&vocab.Link{ID: "https://example.com/1", Href: "https://example.com/1", Type: vocab.LinkType},
 		&vocab.Actor{ID: "https://example.com/~jdoe", Type: vocab.PersonType},
 		&vocab.Activity{ID: "https://example.com/~jdoe/1", Type: vocab.UpdateType},
 		&vocab.Object{ID: "https://example.com/~jdoe/tag-none", Type: vocab.UpdateType},
 		&vocab.Question{ID: "https://example.com/~jdoe/2", Type: vocab.QuestionType},
 		&vocab.IntransitiveActivity{ID: "https://example.com/~jdoe/3", Type: vocab.ArriveType},
+		&vocab.Tombstone{ID: "https://example.com/objects/1", Type: vocab.TombstoneType},
+		&vocab.Tombstone{ID: "https://example.com/actors/f00", Type: vocab.TombstoneType},
 	}
 
 	pk, _      = rsa.GenerateKey(rand.Reader, 4096)
@@ -333,11 +338,14 @@ func withGeneratedMocks(t *testing.T, r *repo) *repo {
 	idSetter := setId(rootIRI)
 	r = withGeneratedRoot(root)(t, r)
 
+	dur := time.Second
+
 	actors := make(vocab.ItemCollection, 0, 20)
 	for range cap(actors) - 1 {
 		actor := conformance.RandomActor(root)
 		_ = vocab.OnObject(actor, func(object *vocab.Object) error {
-			object.Published = publishedTime
+			object.Published = publishedTime.Add(dur)
+			dur += time.Duration(mrand.Intn(666)) * time.Second
 			return idSetter(object)
 		})
 		_ = actors.Append(actor)
@@ -352,14 +360,16 @@ func withGeneratedMocks(t *testing.T, r *repo) *repo {
 		parent := root
 		ob := conformance.RandomObject(parent)
 		_ = vocab.OnObject(ob, func(object *vocab.Object) error {
-			object.Published = publishedTime
+			object.Published = publishedTime.Add(dur)
+			dur += time.Duration(mrand.Intn(666)) * time.Second
 			object.Tag = vocab.ItemCollection{conformance.RandomTag(parent)}
 			return idSetter(object)
 		})
 		_ = objects.Append(ob)
 		create := createActivity(ob, root)
 		_ = vocab.OnObject(create, func(object *vocab.Object) error {
-			object.Published = publishedTime
+			object.Published = publishedTime.Add(dur)
+			dur += time.Duration(mrand.Intn(666)) * time.Second
 			return idSetter(object)
 		})
 		_ = creates.Append(create)
@@ -375,12 +385,16 @@ func withGeneratedMocks(t *testing.T, r *repo) *repo {
 
 		activity := conformance.RandomActivity(object, author)
 		_ = vocab.OnObject(activity, func(object *vocab.Object) error {
-			object.Published = publishedTime
+			object.Published = publishedTime.Add(dur)
+			dur += time.Duration(mrand.Intn(666)) * time.Second
 			return idSetter(object)
 		})
 		_ = activities.Append(activity)
 	}
 	activities = append(creates, activities...)
+
+	slices.SortStableFunc(activities, vocab.TimestampSortFunc)
+
 	r = withGeneratedItems(activities)(t, r)
 	r = withActivitiesToCollections(activities)(t, r)
 
@@ -443,14 +457,15 @@ func wantsRootOutboxPage(maxItems int, ff ...filters.Check) vocab.Item {
 }
 
 func wantsRootOutbox(ff ...filters.Check) vocab.Item {
+	items := *allActivities.Load()
 	col := &vocab.OrderedCollection{
 		ID:           filters.IRIf(rootOutboxIRI, ff...),
 		Type:         vocab.OrderedCollectionType,
 		AttributedTo: rootIRI,
 		Published:    publishedTime,
 		CC:           vocab.ItemCollection{vocab.IRI("https://www.w3.org/ns/activitystreams#Public")},
-		OrderedItems: filter(*allActivities.Load(), ff...),
-		TotalItems:   allActivities.Load().Count(),
+		OrderedItems: filter(items, ff...),
+		TotalItems:   items.Count(),
 	}
 	if len(ff) > 0 {
 		col.First = filters.IRIf(rootOutboxIRI, append(ff, filters.WithMaxCount(filters.MaxItems))...)
