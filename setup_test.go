@@ -443,17 +443,25 @@ func filter(items vocab.ItemCollection, fil ...filters.Check) vocab.ItemCollecti
 	return *result
 }
 
-func wantsRootOutboxPage(maxItems int, ff ...filters.Check) vocab.Item {
-	return &vocab.OrderedCollectionPage{
-		ID:           rootOutboxIRI,
+func wantsRootOutboxPage(ff ...filters.Check) vocab.Item {
+	items := *allActivities.Load()
+	oi := filter(items, ff...)
+	id := filters.IRIf(rootOutboxIRI, ff...)
+	col := &vocab.OrderedCollectionPage{
+		ID:           id,
 		Type:         vocab.OrderedCollectionPageType,
 		AttributedTo: rootIRI,
 		Published:    publishedTime,
 		CC:           vocab.ItemCollection{vocab.IRI("https://www.w3.org/ns/activitystreams#Public")},
-		First:        vocab.IRI(string(rootOutboxIRI) + "?" + filters.ToValues(filters.WithMaxCount(maxItems)).Encode()),
-		OrderedItems: filter(*allActivities.Load(), ff...),
+		PartOf:       rootOutboxIRI,
+		First:        id,
+		OrderedItems: oi,
 		TotalItems:   allActivities.Load().Count(),
 	}
+	if len(oi) > 1 {
+		col.Next = filters.IRIf(rootOutboxIRI, append(ff, filters.After(filters.SameID(oi[len(oi)-1].GetLink())))...)
+	}
+	return col
 }
 
 func wantsRootOutbox(ff ...filters.Check) vocab.Item {

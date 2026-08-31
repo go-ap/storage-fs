@@ -548,15 +548,15 @@ func Test_repo_Load(t *testing.T) {
 			args: args{iri: rootOutboxIRI},
 			want: wantsRootOutbox(),
 		},
-		//{
-		//	// NOTE(marius): this doesn't work probably due to the implicit ordering when loading from disk
-		//	name: "limit to max 2 things",
-		//	args: args{
-		//		iri: rootOutboxIRI,
-		//		fil: filters.Checks{filters.WithMaxCount(2)},
-		//	},
-		//	want: wantsRootOutboxPage(2, filters.WithMaxCount(2)),
-		//},
+		{
+			// NOTE(marius): this doesn't work probably due to the implicit ordering when loading from disk
+			name: "limit to max 2 things",
+			args: args{
+				iri: rootOutboxIRI,
+				fil: filters.Checks{filters.WithMaxCount(2)},
+			},
+			want: wantsRootOutboxPage(filters.WithMaxCount(2)),
+		},
 		{
 			name: "outbox?type=Create",
 			args: args{
