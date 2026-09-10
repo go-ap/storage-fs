@@ -3,7 +3,7 @@ module github.com/go-ap/storage-fs
 go 1.26.0
 
 require (
-	git.sr.ht/~mariusor/lw v0.0.0-20260908112334-5e5fb7ebd609
+	git.sr.ht/~mariusor/lw v0.0.0-20260909101337-bf5f748a81e6
 	github.com/RoaringBitmap/roaring v1.9.4
 	github.com/go-ap/activitypub v0.0.0-20260909093825-f72cfa142bd0
 	github.com/go-ap/cache v0.0.0-20260909101407-b27994bd51dd
