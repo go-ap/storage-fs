@@ -103,7 +103,7 @@ func (r *repo) openOauthRoot() (*os.Root, error) {
 		return nil, errNotOpen
 	}
 	if err := mkDirIfNotExists(r.root, folder); err != nil {
-		return nil, errors.Annotatef(err, "Invalid path %s", folder)
+		return nil, errors.Annotatef(err, "invalid path %s", folder)
 	}
 
 	return r.root.OpenRoot(folder)

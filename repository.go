@@ -143,8 +143,11 @@ func (r *repo) RemoveFrom(colIRI vocab.IRI, items ...vocab.Item) error {
 	linkPath := iriPath(colIRI)
 	for _, it := range items {
 		fullLink := path.Join(linkPath, url.PathEscape(iriPath(it.GetLink())))
+		locallySavedLink := path.Join(linkPath, filepath.Base(iriPath(it.GetLink())))
 		err = onCollection(r, col, it, func(p string) error {
-			return r.root.RemoveAll(fullLink)
+			err1 := r.root.RemoveAll(fullLink)
+			err2 := r.root.RemoveAll(locallySavedLink)
+			return errors.Join(err1, err2)
 		})
 		if err != nil {
 			return err
@@ -553,25 +556,34 @@ func loadFilteredPropsForActor(r *repo, fil ...filters.Check) func(a *vocab.Acto
 
 func loadFilteredPropsForObject(r *repo, fil ...filters.Check) func(o *vocab.Object) error {
 	return func(o *vocab.Object) error {
-		if len(o.Tag) == 0 {
+		if vocab.IsNil(o.Tag) {
 			return nil
 		}
-		return vocab.OnItemCollection(o.Tag, func(col *vocab.ItemCollection) error {
-			for i, t := range *col {
-				if vocab.IsNil(t) || !vocab.IsIRI(t) {
+		tags := make(vocab.ItemCollection, 0)
+		err := vocab.OnItem(o.Tag, func(it vocab.Item) error {
+			if vocab.IsNil(it) {
+				return nil
+			}
+			var tag vocab.Item
+			if !vocab.IsIRI(it) {
+				tag = it
+			} else {
+				ob, err := r.loadFromPath(getObjectKey(iriPath(it.GetLink())))
+				if err != nil {
 					return nil
 				}
-				ob, err := r.loadFromPath(getObjectKey(iriPath(t.GetLink())))
-				if err != nil {
-					continue
-				}
 				if ob = filters.TagChecks(fil...).Run(ob); ob == nil {
-					continue
+					return nil
 				}
-				(*col)[i] = ob
+				tag = it
 			}
+			_ = tags.Append(tag)
 			return nil
 		})
+		if err == nil && len(tags) > 0 {
+			o.Tag = tags.Normalize()
+		}
+		return err
 	}
 }
 
