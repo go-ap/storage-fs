@@ -555,6 +555,7 @@ func loadFilteredPropsForActor(r *repo, fil ...filters.Check) func(a *vocab.Acto
 }
 
 func loadFilteredPropsForObject(r *repo, fil ...filters.Check) func(o *vocab.Object) error {
+	tagChecks := filters.TagChecks(fil...)
 	return func(o *vocab.Object) error {
 		if vocab.IsNil(o.Tag) {
 			return nil
@@ -564,21 +565,18 @@ func loadFilteredPropsForObject(r *repo, fil ...filters.Check) func(o *vocab.Obj
 			if vocab.IsNil(it) {
 				return nil
 			}
-			var tag vocab.Item
 			if !vocab.IsIRI(it) {
-				tag = it
-			} else {
-				ob, err := r.loadFromPath(getObjectKey(iriPath(it.GetLink())))
-				if err != nil {
-					return nil
-				}
-				if ob = filters.TagChecks(fil...).Run(ob); ob == nil {
-					return nil
-				}
-				tag = it
+				_ = tags.Append(it)
+				return nil
 			}
-			_ = tags.Append(tag)
-			return nil
+			ob, err := r.loadFromPath(getObjectKey(iriPath(it.GetLink())))
+			if err != nil {
+				return nil
+			}
+			if ob = tagChecks.Run(ob); ob == nil {
+				return nil
+			}
+			return tags.Append(ob)
 		})
 		if err == nil && len(tags) > 0 {
 			o.Tag = tags.Normalize()
