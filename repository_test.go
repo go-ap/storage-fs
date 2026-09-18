@@ -703,7 +703,7 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 			want: &vocab.Actor{
 				ID:    "https://example.com",
 				Type:  vocab.ApplicationType,
-				Name:  vocab.DefaultNaturalLanguage("example.com"),
+				Name:  vocab.DefaultLangValue("example.com"),
 				Inbox: vocab.IRI("https://example.com/inbox"),
 			},
 		},
@@ -753,8 +753,8 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 						Object: &vocab.Object{
 							ID:      "https://example.com/inbox/1",
 							Type:    vocab.ArticleType,
-							Name:    vocab.DefaultNaturalLanguage("Donec quis tempus eros, ut bibendum nibh."),
-							Content: vocab.DefaultNaturalLanguage("Suspendisse blandit tempor faucibus.\nVestibulum eleifend eros metus, eget congue mauris molestie ut.\nNam ut odio id risus laoreet scelerisque.\n"),
+							Name:    vocab.DefaultLangValue("Donec quis tempus eros, ut bibendum nibh."),
+							Content: vocab.DefaultLangValue("Suspendisse blandit tempor faucibus.\nVestibulum eleifend eros metus, eget congue mauris molestie ut.\nNam ut odio id risus laoreet scelerisque.\n"),
 						},
 					},
 					&vocab.Activity{
@@ -763,12 +763,12 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 						Actor: &vocab.Actor{
 							ID:                "https://example.com/Hank",
 							Type:              vocab.ServiceType,
-							PreferredUsername: vocab.DefaultNaturalLanguage("Hank"),
+							PreferredUsername: vocab.DefaultLangValue("Hank"),
 						},
 						Object: &vocab.Object{
 							ID:      "https://example.com/inbox/93/object",
-							Name:    vocab.DefaultNaturalLanguage("Cras pharetra libero."),
-							Content: vocab.DefaultNaturalLanguage("Vivamus eget maximus quam, non dignissim sapien.\nDonec finibus sem vitae nisi ultricies dictum.\nCras pharetra libero.\nPhasellus sit amet aliquam quam.\nIn at vulputate est.\nIn porttitor augue ac dolor viverra, eget fringilla augue tincidunt.\nDonec accumsan pulvinar risus, eu ultrices est volutpat lobortis.\nCurabitur tincidunt mattis ornare.\nUt lacinia ligula a bibendum pulvinar.\nIn velit libero, ultrices nec quam at, lacinia congue purus.\nAliquam gravida gravida urna ac ornare.\nQuisque ac dolor tellus.\nSuspendisse blandit tempor faucibus.\nUt lacinia ligula a bibendum pulvinar.\nDonec accumsan pulvinar risus, eu ultrices est volutpat lobortis.\nFusce sit amet eros in lacus porta vehicula.\nNulla facilisi.\nNulla facilisi.\nIn porttitor augue ac dolor viverra, eget fringilla augue tincidunt.\nNullam turpis turpis, malesuada non accumsan vitae, congue ac justo.\nQuisque id mi aliquet, pellentesque diam eu, euismod nisl.\nSuspendisse potenti.\nIn velit libero, ultrices nec quam at, lacinia congue purus.\n"),
+							Name:    vocab.DefaultLangValue("Cras pharetra libero."),
+							Content: vocab.DefaultLangValue("Vivamus eget maximus quam, non dignissim sapien.\nDonec finibus sem vitae nisi ultricies dictum.\nCras pharetra libero.\nPhasellus sit amet aliquam quam.\nIn at vulputate est.\nIn porttitor augue ac dolor viverra, eget fringilla augue tincidunt.\nDonec accumsan pulvinar risus, eu ultrices est volutpat lobortis.\nCurabitur tincidunt mattis ornare.\nUt lacinia ligula a bibendum pulvinar.\nIn velit libero, ultrices nec quam at, lacinia congue purus.\nAliquam gravida gravida urna ac ornare.\nQuisque ac dolor tellus.\nSuspendisse blandit tempor faucibus.\nUt lacinia ligula a bibendum pulvinar.\nDonec accumsan pulvinar risus, eu ultrices est volutpat lobortis.\nFusce sit amet eros in lacus porta vehicula.\nNulla facilisi.\nNulla facilisi.\nIn porttitor augue ac dolor viverra, eget fringilla augue tincidunt.\nNullam turpis turpis, malesuada non accumsan vitae, congue ac justo.\nQuisque id mi aliquet, pellentesque diam eu, euismod nisl.\nSuspendisse potenti.\nIn velit libero, ultrices nec quam at, lacinia congue purus.\n"),
 							Type:    vocab.DocumentType,
 						},
 					},
@@ -796,12 +796,12 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 						Actor: &vocab.Actor{
 							ID:                "https://example.com/Hank",
 							Type:              vocab.ServiceType,
-							PreferredUsername: vocab.DefaultNaturalLanguage("Hank"),
+							PreferredUsername: vocab.DefaultLangValue("Hank"),
 						},
 						Object: &vocab.Object{
 							ID:      "https://example.com/inbox/93/object",
-							Name:    vocab.DefaultNaturalLanguage("Cras pharetra libero."),
-							Content: vocab.DefaultNaturalLanguage("Vivamus eget maximus quam, non dignissim sapien.\nDonec finibus sem vitae nisi ultricies dictum.\nCras pharetra libero.\nPhasellus sit amet aliquam quam.\nIn at vulputate est.\nIn porttitor augue ac dolor viverra, eget fringilla augue tincidunt.\nDonec accumsan pulvinar risus, eu ultrices est volutpat lobortis.\nCurabitur tincidunt mattis ornare.\nUt lacinia ligula a bibendum pulvinar.\nIn velit libero, ultrices nec quam at, lacinia congue purus.\nAliquam gravida gravida urna ac ornare.\nQuisque ac dolor tellus.\nSuspendisse blandit tempor faucibus.\nUt lacinia ligula a bibendum pulvinar.\nDonec accumsan pulvinar risus, eu ultrices est volutpat lobortis.\nFusce sit amet eros in lacus porta vehicula.\nNulla facilisi.\nNulla facilisi.\nIn porttitor augue ac dolor viverra, eget fringilla augue tincidunt.\nNullam turpis turpis, malesuada non accumsan vitae, congue ac justo.\nQuisque id mi aliquet, pellentesque diam eu, euismod nisl.\nSuspendisse potenti.\nIn velit libero, ultrices nec quam at, lacinia congue purus.\n"),
+							Name:    vocab.DefaultLangValue("Cras pharetra libero."),
+							Content: vocab.DefaultLangValue("Vivamus eget maximus quam, non dignissim sapien.\nDonec finibus sem vitae nisi ultricies dictum.\nCras pharetra libero.\nPhasellus sit amet aliquam quam.\nIn at vulputate est.\nIn porttitor augue ac dolor viverra, eget fringilla augue tincidunt.\nDonec accumsan pulvinar risus, eu ultrices est volutpat lobortis.\nCurabitur tincidunt mattis ornare.\nUt lacinia ligula a bibendum pulvinar.\nIn velit libero, ultrices nec quam at, lacinia congue purus.\nAliquam gravida gravida urna ac ornare.\nQuisque ac dolor tellus.\nSuspendisse blandit tempor faucibus.\nUt lacinia ligula a bibendum pulvinar.\nDonec accumsan pulvinar risus, eu ultrices est volutpat lobortis.\nFusce sit amet eros in lacus porta vehicula.\nNulla facilisi.\nNulla facilisi.\nIn porttitor augue ac dolor viverra, eget fringilla augue tincidunt.\nNullam turpis turpis, malesuada non accumsan vitae, congue ac justo.\nQuisque id mi aliquet, pellentesque diam eu, euismod nisl.\nSuspendisse potenti.\nIn velit libero, ultrices nec quam at, lacinia congue purus.\n"),
 							Type:    vocab.DocumentType,
 						},
 					},
@@ -825,20 +825,20 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 					&vocab.Object{
 						ID:      "https://example.com/inbox/1",
 						Type:    vocab.ArticleType,
-						Name:    vocab.DefaultNaturalLanguage("Donec quis tempus eros, ut bibendum nibh."),
-						Content: vocab.DefaultNaturalLanguage("Suspendisse blandit tempor faucibus.\nVestibulum eleifend eros metus, eget congue mauris molestie ut.\nNam ut odio id risus laoreet scelerisque.\n"),
+						Name:    vocab.DefaultLangValue("Donec quis tempus eros, ut bibendum nibh."),
+						Content: vocab.DefaultLangValue("Suspendisse blandit tempor faucibus.\nVestibulum eleifend eros metus, eget congue mauris molestie ut.\nNam ut odio id risus laoreet scelerisque.\n"),
 					},
 					&vocab.Object{
 						ID:      "https://example.com/inbox/11",
 						Type:    vocab.ArticleType,
-						Name:    vocab.DefaultNaturalLanguage("In velit libero, ultrices nec quam at, lacinia congue purus."),
-						Content: vocab.DefaultNaturalLanguage("Sed est elit, facilisis eu malesuada non, mattis nec risus.\nUt lacinia ligula a bibendum pulvinar.\nAliquam gravida gravida urna ac ornare.\nIn porttitor augue ac dolor viverra, eget fringilla augue tincidunt.\nCras pharetra libero.\nDonec quis tempus eros, ut bibendum nibh.\nMaecenas dapibus, mi quis elementum imperdiet, ipsum dolor molestie est, sit amet finibus nisi nunc et orci.\nVivamus eget maximus quam, non dignissim sapien.\nCurabitur tincidunt mattis ornare.\nSuspendisse blandit tempor faucibus.\nNulla semper aliquet tincidunt.\n"),
+						Name:    vocab.DefaultLangValue("In velit libero, ultrices nec quam at, lacinia congue purus."),
+						Content: vocab.DefaultLangValue("Sed est elit, facilisis eu malesuada non, mattis nec risus.\nUt lacinia ligula a bibendum pulvinar.\nAliquam gravida gravida urna ac ornare.\nIn porttitor augue ac dolor viverra, eget fringilla augue tincidunt.\nCras pharetra libero.\nDonec quis tempus eros, ut bibendum nibh.\nMaecenas dapibus, mi quis elementum imperdiet, ipsum dolor molestie est, sit amet finibus nisi nunc et orci.\nVivamus eget maximus quam, non dignissim sapien.\nCurabitur tincidunt mattis ornare.\nSuspendisse blandit tempor faucibus.\nNulla semper aliquet tincidunt.\n"),
 					},
 					&vocab.Object{
 						ID:      "https://example.com/inbox/74",
 						Type:    vocab.ArticleType,
-						Name:    vocab.DefaultNaturalLanguage("Cras pulvinar gravida purus, id tincidunt sem vestibulum vel."),
-						Content: vocab.DefaultNaturalLanguage("Nam ut odio id risus laoreet scelerisque.\n"),
+						Name:    vocab.DefaultLangValue("Cras pulvinar gravida purus, id tincidunt sem vestibulum vel."),
+						Content: vocab.DefaultLangValue("Nam ut odio id risus laoreet scelerisque.\n"),
 					},
 				},
 				TotalItems: inbox.Count(),
