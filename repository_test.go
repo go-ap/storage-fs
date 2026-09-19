@@ -527,7 +527,11 @@ func Test_repo_Load(t *testing.T) {
 			args: args{iri: "https://example.com/person/1"},
 			want: func() vocab.Item {
 				items := filter(*allActors.Load(), filters.HasType("Person"))
-				return items[len(items)-1]
+				var res vocab.Item
+				if len(items) > 0 {
+					res = items[len(items)-1]
+				}
+				return res
 			}(),
 		},
 		{
@@ -866,8 +870,8 @@ func Test_repo_Load_should_deprecate(t *testing.T) {
 				t.Errorf("Load() error = %s", cmp.Diff(tt.wantErr, err, EquateWeakErrors))
 				return
 			}
-			if !vocab.ItemsEqual(got, tt.want) {
-				t.Errorf("Load() got = %s", cmp.Diff(tt.want, got))
+			if !cmp.Equal(got, tt.want, EquateItemCollections) {
+				t.Errorf("Load() got = %s", cmp.Diff(tt.want, got, EquateItemCollections))
 			}
 		})
 	}

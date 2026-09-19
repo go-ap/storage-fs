@@ -9,7 +9,7 @@ require (
 	github.com/go-ap/cache v0.0.0-20260918155104-22e0a7768d84
 	github.com/go-ap/errors v0.0.0-20260701132509-92e5e4fd6394
 	github.com/go-ap/filters v0.0.0-20260918155248-f7ae9002f89f
-	github.com/go-ap/storage-conformance-suite v0.0.0-20260918181136-55b6b5bbc6d2
+	github.com/go-ap/storage-conformance-suite v0.0.0-20260919133014-c15498a288ed
 	github.com/google/go-cmp v0.7.0
 	github.com/openshift/osin v1.0.2-0.20220317075346-0f4d38c6e53f
 	golang.org/x/crypto v0.57.0

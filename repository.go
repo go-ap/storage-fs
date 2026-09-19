@@ -108,15 +108,15 @@ func (r *repo) Close() {
 }
 
 // Load
-func (r *repo) Load(i vocab.IRI, f ...filters.Check) (vocab.Item, error) {
+func (r *repo) Load(i vocab.IRI, checks ...filters.Check) (vocab.Item, error) {
 	if r == nil || r.root == nil {
 		return nil, errNotOpen
 	}
-	it, err := r.loadFromIRI(i, f...)
+	it, err := r.loadFromIRI(i, checks...)
 	if err != nil {
 		return nil, err
 	}
-	return filters.Checks(f).Run(it), nil
+	return filters.Checks(checks).Run(it), nil
 }
 
 // Save
@@ -548,85 +548,84 @@ func (r *repo) loadOneFromIRI(i vocab.IRI) (vocab.Item, error) {
 	return it, nil
 }
 
-func loadFilteredPropsForActor(r *repo, fil ...filters.Check) func(a *vocab.Actor) error {
+func loadFilteredPropsForActor(r *repo, checks ...filters.Check) vocab.WithActorFn {
 	return func(a *vocab.Actor) error {
-		return vocab.OnObject(a, loadFilteredPropsForObject(r, fil...))
+		return vocab.OnObject(a, loadFilteredPropsForObject(r, checks...))
 	}
 }
 
-func loadFilteredPropsForObject(r *repo, fil ...filters.Check) func(o *vocab.Object) error {
-	tagChecks := filters.TagChecks(fil...)
+func loadFilteredPropsForObject(r *repo, checks ...filters.Check) vocab.WithObjectFn {
+	tagChecks := filters.TagChecks(checks...)
+	if len(tagChecks) == 0 {
+		tagChecks = filters.Checks{filters.NoType}
+	}
 	return func(o *vocab.Object) error {
 		if vocab.IsNil(o.Tag) {
 			return nil
 		}
-		tags := make(vocab.ItemCollection, 0)
-		err := vocab.OnItem(o.Tag, func(it vocab.Item) error {
-			if vocab.IsNil(it) {
-				return nil
-			}
-			if !vocab.IsIRI(it) {
-				_ = tags.Append(it)
-				return nil
-			}
-			ob, err := r.loadFromPath(getObjectKey(iriPath(it.GetLink())))
-			if err != nil {
-				return nil
-			}
-			if ob = tagChecks.Run(ob); ob == nil {
-				return nil
-			}
-			return tags.Append(ob)
-		})
-		if err == nil && len(tags) > 0 {
-			o.Tag = tags.Normalize()
-		}
+		var err error
+		o.Tag, err = dereferenceItemAndFilter(r, o.Tag, tagChecks...)
 		return err
 	}
 }
 
-func dereferenceItemAndFilter(r *repo, ob vocab.Item, fil ...filters.Check) (vocab.Item, error) {
-	if vocab.IsNil(ob) {
-		return ob, nil
+func dereferenceItemAndFilter(r *repo, it vocab.Item, checks ...filters.Check) (vocab.Item, error) {
+	if vocab.IsNil(it) {
+		return it, nil
+	}
+	if len(checks) == 0 {
+		// NOTE(marius): no filtering on the object
+		return it, nil
 	}
 
-	if !vocab.IsIRI(ob) {
-		return ob, nil
-	}
-	itPath := iriPath(ob.GetLink())
-	o, err := r.loadFromPath(getObjectKey(itPath), fil...)
-	if err != nil {
-		return ob, nil
-	}
-
-	return o, nil
+	res := make(vocab.ItemCollection, 0)
+	err := vocab.OnItem(it, func(iit vocab.Item) error {
+		if vocab.IsNil(iit) {
+			return nil
+		}
+		if vocab.IsIRI(iit) {
+			o, err := r.loadFromPath(getObjectKey(iriPath(iit.GetLink())))
+			if err != nil {
+				return nil
+			}
+			if o = filters.Checks(checks).Run(o); o != nil {
+				iit = o
+			}
+		}
+		return res.Append(iit)
+	})
+	return res.Normalize(), err
 }
 
-func loadFilteredPropsForActivity(r *repo, fil ...filters.Check) func(a *vocab.Activity) error {
-	objectChecks := filters.ObjectChecks(fil...)
+var activityTypesThatShouldLoadObjects = vocab.ActivityVocabularyTypes{vocab.UpdateType, vocab.CreateType}
+
+func loadFilteredPropsForActivity(r *repo, checks ...filters.Check) vocab.WithActivityFn {
+	objectChecks := filters.ObjectChecks(checks...)
 	return func(a *vocab.Activity) error {
+		if len(objectChecks) == 0 && activityTypesThatShouldLoadObjects.Match(a.Type) {
+			objectChecks = filters.Checks{filters.NotNilID}
+		}
 		var err error
-		if !vocab.IsNil(a.Object) {
-			if a.ID.Equals(a.Object.GetLink(), false) {
-				return errors.BadGatewayf("invalid activity with id %s, referencing itself as an object: %s", a.ID, a.Object.GetLink())
-			}
+		if !vocab.IsNil(a.Object) && !a.ID.Equal(a.Object.GetID()) && len(objectChecks) > 0 {
 			if a.Object, err = dereferenceItemAndFilter(r, a.Object, objectChecks...); err != nil {
 				return err
 			}
 		}
-		intransitiveChecks := filters.IntransitiveActivityChecks(fil...)
-		return vocab.OnIntransitiveActivity(a, loadFilteredPropsForIntransitiveActivity(r, intransitiveChecks...))
+		return vocab.OnIntransitiveActivity(a, loadFilteredPropsForIntransitiveActivity(r, checks...))
 	}
 }
 
-func loadFilteredPropsForIntransitiveActivity(r *repo, fil ...filters.Check) func(a *vocab.IntransitiveActivity) error {
-	targetChecks := filters.TargetChecks(fil...)
+func loadFilteredPropsForIntransitiveActivity(r *repo, checks ...filters.Check) vocab.WithIntransitiveActivityFn {
+	targetChecks := filters.TargetChecks(checks...)
+	actorChecks := filters.ActorChecks(checks...)
 	return func(a *vocab.IntransitiveActivity) error {
 		var err error
-		if !vocab.IsNil(a.Target) {
-			if a.ID.Equals(a.Target.GetLink(), false) {
-				return errors.BadGatewayf("invalid activity with id %s, referencing itself as a target: %s", a.ID, a.Target.GetLink())
+		if !vocab.IsNil(a.Actor) && !a.ID.Equal(a.Actor.GetLink()) && len(actorChecks) > 0 {
+			if a.Actor, err = dereferenceItemAndFilter(r, a.Actor, actorChecks...); err != nil {
+				return err
 			}
+		}
+		if !vocab.IsNil(a.Target) && !a.ID.Equal(a.Target.GetLink()) && len(targetChecks) > 0 {
 			if a.Target, err = dereferenceItemAndFilter(r, a.Target, targetChecks...); err != nil {
 				return err
 			}
@@ -713,7 +712,7 @@ func loadRawFromPath(root *os.Root, p string) (vocab.Item, error) {
 }
 
 // loadFromPath
-func (r *repo) loadFromPath(p string, fil ...filters.Check) (vocab.Item, error) {
+func (r *repo) loadFromPath(p string, checks ...filters.Check) (vocab.Item, error) {
 	if r.root == nil {
 		return nil, errNotOpen
 	}
@@ -728,11 +727,11 @@ func (r *repo) loadFromPath(p string, fil ...filters.Check) (vocab.Item, error) 
 	if it == nil || vocab.IsNil(it) {
 		return nil, errors.NotFoundf("not found")
 	}
-	return dereferencePropertiesByType(r, it, fil...), nil
+	return dereferencePropertiesByType(r, it, checks...), nil
 }
 
-func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollection, ff ...filters.Check) fs.WalkDirFunc {
-	matcherFn := filters.RawMatcher(ff)
+func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollection, checks ...filters.Check) fs.WalkDirFunc {
+	matcherFn := filters.RawMatcher(checks)
 	return func(p string, info os.DirEntry, err error) error {
 		if err != nil && os.IsNotExist(err) {
 			if isStorageCollectionKey(p) {
@@ -766,61 +765,50 @@ func loadWithRawFiltering(r *repo, colDirPath string, items *vocab.ItemCollectio
 	}
 }
 
-func derefPropertiesForCurrentPage(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item {
-	if vocab.IsNil(it) || !vocab.IsCollection(it) || len(fil) == 0 {
+func derefPropertiesForCurrentPage(r *repo, it vocab.Item, checks ...filters.Check) vocab.Item {
+	if vocab.IsNil(it) || !vocab.IsCollection(it) || len(checks) == 0 {
 		return it
 	}
 
 	_ = vocab.OnOrderedCollection(it, func(c *vocab.OrderedCollection) error {
-		c.OrderedItems = dereferencePropertiesForCollection(r, c.OrderedItems, fil...)
+		c.OrderedItems = dereferencePropertiesForCollection(r, c.OrderedItems, checks...)
 		return nil
 	})
 
 	return it
 }
 
-func dereferencePropertiesByType(r *repo, it vocab.Item, fil ...filters.Check) vocab.Item {
+func dereferencePropertiesByType(r *repo, it vocab.Item, checks ...filters.Check) vocab.Item {
 	if vocab.IsNil(it) || vocab.IsIRI(it) {
 		return it
 	}
-
-	intransitiveChecks := filters.IntransitiveActivityChecks(fil...)
-	activityChecks := filters.ActivityChecks(fil...)
-	actorChecks := filters.ActorChecks(fil...)
-	objectChecks := filters.ObjectChecks(fil...)
-
-	authorizedChecks := filters.AuthorizedChecks(fil...)
 
 	typ := it.GetType()
 	// NOTE(marius): this can probably expedite filtering if we early exit when we fail to load the
 	// properties that need to be loaded for sub-filters.
 	switch {
-	case vocab.IntransitiveActivityTypes.Match(typ) /*&& len(intransitiveChecks) > 0*/ :
-		checks := append(intransitiveChecks, authorizedChecks...)
+	case vocab.IntransitiveActivityTypes.Match(typ):
 		_ = vocab.OnIntransitiveActivity(it, loadFilteredPropsForIntransitiveActivity(r, checks...))
-	case vocab.ActivityTypes.Match(typ) /*&& len(activityChecks) > 0*/ :
-		checks := append(activityChecks, authorizedChecks...)
+	case vocab.ActivityTypes.Match(typ):
 		_ = vocab.OnActivity(it, loadFilteredPropsForActivity(r, checks...))
-	case vocab.ActorTypes.Match(typ) /*&& len(actorChecks) > 0*/ :
-		checks := append(actorChecks, authorizedChecks...)
+	case vocab.ActorTypes.Match(typ):
 		_ = vocab.OnActor(it, loadFilteredPropsForActor(r, checks...))
-	case vocab.ObjectTypes.Match(typ) /*&& len(objectChecks) > 0*/ :
-		checks := append(objectChecks, authorizedChecks...)
+	case vocab.ObjectTypes.Match(typ):
 		_ = vocab.OnObject(it, loadFilteredPropsForObject(r, checks...))
 	case vocab.CollectionType.Match(it.GetType()):
-		_ = vocab.OnCollection(it, loadFilteredItemsForCollection(r, fil...))
+		_ = vocab.OnCollection(it, loadFilteredItemsForCollection(r, checks...))
 	case vocab.OrderedCollectionType.Match(it.GetType()):
-		_ = vocab.OnOrderedCollection(it, loadFilteredItemsForOrderedCollection(r, fil...))
+		_ = vocab.OnOrderedCollection(it, loadFilteredItemsForOrderedCollection(r, checks...))
 	}
 	return it
 }
 
-func (r *repo) loadCollectionItems(it vocab.Item, fil ...filters.Check) error {
+func (r *repo) loadCollectionItems(it vocab.Item, checks ...filters.Check) error {
 	_ = r.loadIndex()
 
 	// NOTE(marius): let's make sure that if we have filters for authorization/recipients
 	//  we respect them for the collection itself.
-	authCheck := filters.AuthorizedChecks(fil...)
+	authCheck := filters.AuthorizedChecks(checks...)
 	if it = authCheck.Filter(it); vocab.IsNil(it) {
 		return errors.Forbiddenf("forbidden")
 	}
@@ -831,7 +819,7 @@ func (r *repo) loadCollectionItems(it vocab.Item, fil ...filters.Check) error {
 		return nil
 	})
 
-	items, _ := r.searchIndex(it, fil...)
+	items, _ := r.searchIndex(it, checks...)
 	if len(items) == 0 {
 		// NOTE(marius): we load items the hard way if the index search resulted no hits, because we
 		//  can't make use of all the filters in the index. (Yet.)
@@ -841,7 +829,7 @@ func (r *repo) loadCollectionItems(it vocab.Item, fil ...filters.Check) error {
 
 		colDirPath := iriPath(it.GetLink())
 		var fn fs.WalkDirFunc
-		fn = loadWithRawFiltering(r, colDirPath, &items, fil...)
+		fn = loadWithRawFiltering(r, colDirPath, &items, checks...)
 		if err := fs.WalkDir(r.root.FS(), colDirPath, fn); err != nil {
 			return err
 		}
@@ -866,25 +854,25 @@ func (r *repo) loadCollectionItems(it vocab.Item, fil ...filters.Check) error {
 	if err != nil {
 		return err
 	}
-	it = derefPropertiesForCurrentPage(r, it, fil...)
+	it = derefPropertiesForCurrentPage(r, it, checks...)
 	return nil
 }
 
-func loadFilteredItemsForCollection(r *repo, fil ...filters.Check) func(*vocab.Collection) error {
+func loadFilteredItemsForCollection(r *repo, checks ...filters.Check) vocab.WithCollectionFn {
 	return func(col *vocab.Collection) error {
-		return r.loadCollectionItems(col, fil...)
+		return r.loadCollectionItems(col, checks...)
 	}
 }
 
-func loadFilteredItemsForOrderedCollection(r *repo, fil ...filters.Check) func(*vocab.OrderedCollection) error {
+func loadFilteredItemsForOrderedCollection(r *repo, checks ...filters.Check) vocab.WithOrderedCollectionFn {
 	return func(col *vocab.OrderedCollection) error {
-		return r.loadCollectionItems(col, fil...)
+		return r.loadCollectionItems(col, checks...)
 	}
 }
 
-func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil ...filters.Check) vocab.ItemCollection {
-	maxItems := filters.MaxCount(fil...)
-	itemFilters := filters.ItemChecks(fil...)
+func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, checks ...filters.Check) vocab.ItemCollection {
+	maxItems := filters.MaxCount(checks...)
+	itemFilters := filters.ItemChecks(checks...)
 	for i, it := range items {
 		// NOTE(marius): we apply only the top level filters before we dereference the item's properties.
 		// This makes it that if we have filters like actor.type=X, we don't filter them out because the activity
@@ -893,10 +881,10 @@ func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil
 		if !filters.All(filters.FilterChecks(itemFilters...)...).Match(it) {
 			continue
 		}
-		if it = dereferencePropertiesByType(r, it, fil...); !vocab.IsNil(it) {
+		if it = dereferencePropertiesByType(r, it, checks...); !vocab.IsNil(it) {
 			items[i] = it
 		}
-		counted := filters.Counted(fil...)
+		counted := filters.Counted(checks...)
 		if maxItems > 0 && counted == maxItems {
 			break
 		}
@@ -905,14 +893,14 @@ func dereferencePropertiesForCollection(r *repo, items vocab.ItemCollection, fil
 	return items
 }
 
-func (r *repo) loadFromIRI(iri vocab.IRI, fil ...filters.Check) (it vocab.Item, err error) {
+func (r *repo) loadFromIRI(iri vocab.IRI, checks ...filters.Check) (it vocab.Item, err error) {
 	cachedIt := r.loadFromCache(iri)
 	if !vocab.IsNil(cachedIt) {
 		return cachedIt, nil
 	}
 
 	itPath := iriPath(iri)
-	if it, err = r.loadFromPath(getObjectKey(itPath), fil...); err != nil {
+	if it, err = r.loadFromPath(getObjectKey(itPath), checks...); err != nil {
 		return nil, err
 	}
 	if vocab.IsNil(it) || vocab.IsIRI(it) {
