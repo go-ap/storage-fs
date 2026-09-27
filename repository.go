@@ -427,12 +427,7 @@ func deleteItem(r *repo, it vocab.Item) error {
 }
 
 func save(r *repo, it vocab.Item) (vocab.Item, error) {
-	// NOTE(marius): we have this in the processor
-	//if err := createCollections(r, it); err != nil {
-	//	return it, errors.Annotatef(err, "could not create object's collections")
-	//}
 	_ = r.loadIndex()
-
 	defer func() {
 		_ = r.saveIndex()
 	}()
