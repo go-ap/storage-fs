@@ -155,40 +155,29 @@ func (r *repo) RemoveFrom(colIRI vocab.IRI, items ...vocab.Item) error {
 	}
 
 	typ := col.GetType()
-	if orderedCollectionTypes.Match(typ) {
-		err = vocab.OnOrderedCollection(col, func(c *vocab.OrderedCollection) error {
-			if c.TotalItems <= uint(len(items)) {
-				c.TotalItems = 0
-			} else {
-				c.TotalItems -= uint(len(items))
-			}
+	switch {
+	case orderedCollectionTypes.Match(typ):
+		_ = vocab.OnOrderedCollection(col, func(c *vocab.OrderedCollection) error {
+			c.TotalItems -= uint(len(items))
 			c.OrderedItems = nil
 			return nil
 		})
-	} else if collectionTypes.Match(typ) {
-		err = vocab.OnCollection(col, func(c *vocab.Collection) error {
-			if c.TotalItems <= uint(len(items)) {
-				c.TotalItems = 0
-			} else {
-				c.TotalItems -= uint(len(items))
-			}
+	case collectionTypes.Match(typ):
+		_ = vocab.OnCollection(col, func(c *vocab.Collection) error {
+			c.TotalItems -= uint(len(items))
 			c.Items = nil
 			return nil
 		})
 	}
-
 	if _, err = save(r, col); err != nil {
 		return err
 	}
 
-	for _, it := range items {
-		err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Remove, it))
-		if err != nil && !errors.Is(err, indexDisabled) {
-			r.logger.Errorf("unable to remote item %s from collection index: %s", it.GetLink(), err)
-		}
-
-		r.removeFromCache(it.GetLink())
+	err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Remove, items...))
+	if err != nil && !errors.Is(err, indexDisabled) {
+		r.logger.Errorf("unable to remove items from collection index: %v", err)
 	}
+
 	return nil
 }
 
@@ -314,29 +303,27 @@ func (r *repo) AddTo(colIRI vocab.IRI, items ...vocab.Item) error {
 	}
 
 	typ := col.GetType()
-	if orderedCollectionTypes.Match(typ) {
-		err = vocab.OnOrderedCollection(col, func(c *vocab.OrderedCollection) error {
+	switch {
+	case orderedCollectionTypes.Match(typ):
+		_ = vocab.OnOrderedCollection(col, func(c *vocab.OrderedCollection) error {
 			c.TotalItems += uint(len(items))
 			c.OrderedItems = nil
 			return nil
 		})
-	} else if collectionTypes.Match(typ) {
-		err = vocab.OnCollection(col, func(c *vocab.Collection) error {
+	case collectionTypes.Match(typ):
+		_ = vocab.OnCollection(col, func(c *vocab.Collection) error {
 			c.TotalItems += uint(len(items))
 			c.Items = nil
 			return nil
 		})
 	}
-
 	if _, err = save(r, col); err != nil {
 		return err
 	}
 
-	for _, it := range items {
-		err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Add, it))
-		if err != nil && !errors.IsNotImplemented(err) {
-			r.logger.Debugf("unable to add item %s to collection index: %s", it.GetLink(), err)
-		}
+	err = vocab.OnCollectionIntf(col, r.collectionBitmapOp((*roaring64.Bitmap).Add, items...))
+	if err != nil && !errors.IsNotImplemented(err) {
+		r.logger.Debugf("unable to add item to collection index: %v", err)
 	}
 	return nil
 }
@@ -353,16 +340,9 @@ func (r *repo) Delete(it vocab.Item) error {
 }
 
 func (r *repo) delete(it vocab.Item) error {
-	if vocab.IsItemCollection(it) {
-		if col, ok := it.(vocab.ItemCollection); ok {
-			for _, it := range col {
-				if err := deleteItem(r, it); err != nil {
-					r.logger.Debugf("Unable to remove item %s", it.GetLink())
-				}
-			}
-		}
-	}
-	return deleteItem(r, it.GetLink())
+	return vocab.OnItem(it, func(it vocab.Item) error {
+		return deleteItem(r, it.GetLink())
+	})
 }
 
 var storageCollectionPaths = append(filters.FedBOXCollections, append(vocab.OfActor, vocab.OfObject...)...)
