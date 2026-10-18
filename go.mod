@@ -5,11 +5,11 @@ go 1.26.0
 require (
 	git.sr.ht/~mariusor/lw v0.0.0-20260917101519-2e0b081e156c
 	github.com/RoaringBitmap/roaring v1.9.4
-	github.com/go-ap/activitypub v0.0.0-20261015123346-723e63a90dc1
-	github.com/go-ap/cache v0.0.0-20261015123442-b195083c865a
+	github.com/go-ap/activitypub v0.0.0-20261018144412-73e07f958d52
+	github.com/go-ap/cache v0.0.0-20261018144523-65b6404a30be
 	github.com/go-ap/errors v0.0.0-20260701132509-92e5e4fd6394
-	github.com/go-ap/filters v0.0.0-20261015123504-98ece433d654
-	github.com/go-ap/storage-conformance-suite v0.0.0-20261015124954-d636987393c7
+	github.com/go-ap/filters v0.0.0-20261018144629-c36aa22d954e
+	github.com/go-ap/storage-conformance-suite v0.0.0-20261018145546-8cb9877f5343
 	github.com/google/go-cmp v0.7.0
 	github.com/openshift/osin v1.0.2-0.20220317075346-0f4d38c6e53f
 	golang.org/x/crypto v0.58.0
