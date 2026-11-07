@@ -5,10 +5,10 @@ go 1.26.0
 require (
 	git.sr.ht/~mariusor/lw v0.0.0-20260917101519-2e0b081e156c
 	github.com/RoaringBitmap/roaring v1.9.4
-	github.com/go-ap/activitypub v0.0.0-20261101142956-a76d71dd72b0
-	github.com/go-ap/cache v0.0.0-20261101144458-eb7e2f285afb
-	github.com/go-ap/errors v0.0.0-20260701132509-92e5e4fd6394
-	github.com/go-ap/filters v0.0.0-20261101144638-4754d87b7869
+	github.com/go-ap/activitypub v0.0.0-20261107170531-73ce953a88f6
+	github.com/go-ap/cache v0.0.0-20261107170624-ec506e890123
+	github.com/go-ap/errors v0.0.0-20261107170344-5391268d9d2c
+	github.com/go-ap/filters v0.0.0-20261107170746-b873ae37c70e
 	github.com/go-ap/storage-conformance-suite v0.0.0-20261101145434-f950c6192791
 	github.com/google/go-cmp v0.7.0
 	github.com/openshift/osin v1.0.2-0.20220317075346-0f4d38c6e53f
@@ -28,7 +28,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/go-ap/jsonld v0.0.0-20260607140920-737b40e0ca38 // indirect
+	github.com/go-ap/jsonld v0.0.0-20261107170435-a7bb5ba3f894 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/jdkato/prose v1.2.1 // indirect
